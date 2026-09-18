@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TransitWatch — Detroit</title>
+<meta name="theme-color" content="#071736">
+<meta name="description" content="See what riders are reporting at your stop before you wait there.">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=Archivo+Narrow:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --ink:#071736;
+    --surface:#0D2A57;
+    --raised:#123A72;
+    --rail:#1E4E8F;
+    --paper:#EDF3FF;
+    --muted:#8EA6CC;
+    --signal:#F5C21B;
+    --safe:#2FD48A;
+    --warn:#F5A623;
+    --alert:#FF5C5C;
+    --pad:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--ink);color:var(--paper);
+    font-family:'Archivo',system-ui,-apple-system,sans-serif;
+    font-size:15px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    overscroll-behavior:none;
+  }
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:none;background:none}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+
+  /* ---- shell ---- */
+  #app{display:flex;flex-direction:column;height:100dvh}
+  header{
+    padding:calc(env(safe-area-inset-top) + 12px) var(--pad) 12px;
+    border-bottom:1px solid var(--rail);
+    display:flex;align-items:center;gap:12px;
+    background:var(--surface);
+  }
+  .mark{
+    font-family:'Archivo Narrow',sans-serif;font-weight:700;
+    font-size:19px;letter-spacing:.02em;
+  }
+  .mark span{color:var(--signal)}
+  .loc{margin-left:auto;font-size:12px;color:var(--muted);text-align:right;max-width:46%}
+
+  /* ---- score strip ---- */
+  .score{
+    display:flex;align-items:baseline;gap:12px;
+    padding:14px var(--pad);border-bottom:1px solid var(--rail);
+    background:var(--surface);
+  }
+  .score b{font-family:'Archivo Narrow',sans-serif;font-size:38px;font-weight:700;line-height:1}
+  .score .lbl{font-size:13px;color:var(--muted);flex:1}
+  .bar{height:4px;border-radius:2px;background:var(--rail);margin-top:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--safe);transition:width .4s ease}
+
+  main{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+  .view{display:none;height:100%}
+  .view.on{display:block}
+  #map{height:100%;min-height:320px;background:var(--surface)}
+  .leaflet-tile-pane{filter:hue-rotate(200deg) saturate(1.6) brightness(.92)}
+
+  /* ---- lists ---- */
+  .list{padding:var(--pad);display:flex;flex-direction:column;gap:10px}
+  .card{
+    background:var(--surface);border:1px solid var(--rail);
+    border-left:4px solid var(--rail);border-radius:8px;padding:12px 14px;
+  }
+  .card.s1{border-left-color:var(--signal)}
+  .card.s2{border-left-color:var(--warn)}
+  .card.s3{border-left-color:var(--alert)}
+  .card h3{margin:0 0 2px;font-size:15px;font-weight:600}
+  .card p{margin:4px 0 0;font-size:14px;color:#BFD2EE}
+  .meta{font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .confirm{
+    margin-top:10px;padding:7px 12px;border-radius:999px;
+    background:var(--raised);border:1px solid var(--rail);
+    font-size:13px;font-weight:500;
+  }
+  .confirm[disabled]{opacity:.5;cursor:default}
+  .empty{padding:48px 24px;text-align:center;color:var(--muted)}
+  .empty strong{display:block;color:var(--paper);font-size:17px;margin-bottom:6px}
+
+  /* ---- form ---- */
+  form{padding:var(--pad);display:flex;flex-direction:column;gap:18px;padding-bottom:40px}
+  fieldset{border:none;padding:0;margin:0}
+  legend{font-size:13px;color:var(--muted);margin-bottom:8px;padding:0}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{
+    padding:9px 13px;border-radius:8px;background:var(--surface);
+    border:1px solid var(--rail);font-size:14px;
+  }
+  .chip[aria-pressed="true"]{background:var(--signal);color:var(--ink);border-color:var(--signal);font-weight:600}
+  .sev{display:flex;gap:8px}
+  .sev .chip{flex:1;text-align:center}
+  label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+  input[type=text],textarea{
+    background:var(--surface);border:1px solid var(--rail);border-radius:8px;
+    padding:11px 12px;color:var(--paper);width:100%;
+  }
+  textarea{resize:vertical;min-height:76px}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1;min-width:0}
+  .submit{
+    background:var(--signal);color:var(--ink);font-weight:700;
+    padding:15px;border-radius:10px;font-size:16px;
+  }
+  .submit[disabled]{opacity:.55}
+  .note{font-size:12px;color:var(--muted)}
+
+  /* ---- tabs ---- */
+  nav{
+    display:flex;border-top:1px solid var(--rail);background:var(--surface);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav button{
+    flex:1;padding:12px 4px 14px;font-size:12px;color:var(--muted);
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+  }
+  nav button .g{font-size:19px;line-height:1}
+  nav button[aria-current="true"]{color:var(--signal)}
+
+  /* ---- alert banner ---- */
+  .alert{
+    display:none;padding:13px var(--pad);
+    background:var(--alert);color:#2B0609;
+    font-weight:600;font-size:14px;
+    align-items:center;gap:10px;
+  }
+  .alert.on{display:flex}
+  .alert.info{background:var(--signal);color:var(--ink)}
+  .alert .g{font-size:17px;flex-shrink:0}
+  .alert .x{margin-left:auto;font-size:20px;line-height:1;opacity:.6;padding:0 4px}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.72}}
+  .alert.danger{animation:pulse 1.6s ease-in-out 3}
+
+  .watchToggle{
+    font-size:11px;padding:5px 10px;border-radius:999px;
+    border:1px solid var(--rail);background:var(--raised);color:var(--muted);
+    white-space:nowrap;
+  }
+  .watchToggle[aria-pressed="true"]{color:var(--safe);border-color:var(--safe)}
+
+  .toast{
+    position:fixed;left:50%;bottom:86px;transform:translateX(-50%);
+    background:var(--raised);border:1px solid var(--rail);
+    padding:11px 18px;border-radius:999px;font-size:14px;
+    opacity:0;pointer-events:none;transition:opacity .2s;z-index:900;
+    max-width:88vw;text-align:center;
+  }
+  .toast.on{opacity:1}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="mark">TRANSIT<span>WATCH</span></div>
+    <div class="loc" id="locLabel">Finding you…</div>
+    <button class="watchToggle" id="watchBtn" aria-pressed="true">Alerts on</button>
+  </header>
+
+  <div class="alert" id="alertBar" role="status" aria-live="polite">
+    <span class="g">🚨</span>
+    <span id="alertMsg"></span>
+    <button class="x" id="alertClose" aria-label="Dismiss alert">×</button>
+  </div>
+
+  <div class="score">
+    <b id="scoreNum">—</b>
+    <div class="lbl">
+      <div id="scoreText">Checking conditions around you</div>
+      <div class="bar"><i id="scoreBar" style="width:0%"></i></div>
+    </div>
+  </div>
+
+  <main>
+    <section class="view on" id="v-map"><div id="map"></div></section>
+
+    <section class="view" id="v-near">
+      <div class="list" id="nearList">
+        <div class="empty">Loading reports…</div>
+      </div>
+    </section>
+
+    <section class="view" id="v-report">
+      <form id="reportForm">
+        <fieldset>
+          <legend>What happened?</legend>
+          <div class="chips" id="catChips"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>How serious</legend>
+          <div class="sev chips" id="sevChips">
+            <button type="button" class="chip" data-sev="1">Minor</button>
+            <button type="button" class="chip" data-sev="2" aria-pressed="true">Concerning</button>
+            <button type="button" class="chip" data-sev="3">Dangerous</button>
+          </div>
+        </fieldset>
+
+        <label class="f">Add detail
+          <textarea id="desc" maxlength="400" placeholder="Two people arguing at the shelter, no lighting on that side."></textarea>
+        </label>
+
+        <div class="row">
+          <label class="f">Route
+            <input type="text" id="route" placeholder="SMART 560" maxlength="40">
+          </label>
+          <label class="f">Stop
+            <input type="text" id="stop" placeholder="Gratiot & 8 Mile" maxlength="80">
+          </label>
+        </div>
+
+        <button type="submit" class="submit" id="submitBtn">Post report</button>
+        <p class="note" id="pinNote">Pinned to your current location. No account, no name attached.</p>
+      </form>
+    </section>
+  </main>
+
+  <nav>
+    <button data-view="map" aria-current="true"><span class="g">🗺</span>Map</button>
+    <button data-view="report"><span class="g">✚</span>Report</button>
+    <button data-view="near"><span class="g">☰</span>Nearby</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ------------------------------------------------------------------ */
+const SUPABASE_URL = 'https://cqopycrohvojllarltsv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_VcVKFhjZfPboTs32fF13ag_fz7bs8PR';
+const DEFAULT_POS  = { lat: 42.3314, lng: -83.0458 };   // Downtown Detroit
+/* ------------------------------------------------------------------ */
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const CATEGORIES = [
+  { id:'harassment',          label:'Harassment' },
+  { id:'theft',               label:'Theft' },
+  { id:'assault',             label:'Assault' },
+  { id:'suspicious_activity', label:'Suspicious activity' },
+  { id:'vandalism',           label:'Vandalism' },
+  { id:'poor_lighting',       label:'No lighting' },
+  { id:'no_show_bus',         label:'Bus never came' },
+  { id:'delay',               label:'Long delay' },
+  { id:'other',               label:'Something else' },
+];
+const CAT_LABEL = Object.fromEntries(CATEGORIES.map(c => [c.id, c.label]));
+
+/* device identity — anonymous, local only */
+function deviceToken(){
+  let t = localStorage.getItem('tw_token');
+  if(!t){ t = crypto.randomUUID(); localStorage.setItem('tw_token', t); }
+  return t;
+}
+function confirmedLocally(){
+  try { return JSON.parse(localStorage.getItem('tw_confirmed') || '[]'); }
+  catch { return []; }
+}
+function markConfirmed(id){
+  const s = confirmedLocally(); s.push(id);
+  localStorage.setItem('tw_confirmed', JSON.stringify(s));
+}
+
+let pos = { ...DEFAULT_POS }, haveFix = false;
+let map, layer, meMarker;
+let selectedCat = null, selectedSev = 2;
+
+/* alert state */
+const DANGER_BELOW   = 50;      // score at or under this triggers a warning
+const CAUTION_BELOW  = 72;      // softer heads-up
+const RESCORE_METRES = 75;      // move this far before recalculating
+const ALERT_COOLDOWN = 4 * 60000;  // don't repeat the same warning for 4 min
+const NEARBY_METRES  = 800;     // a new report this close is worth a banner
+let watchOn      = localStorage.getItem('tw_alerts') !== 'off';
+let watchId      = null;
+let lastScoredAt = null;        // {lat,lng} of last score check
+let lastAlertKey = null, lastAlertTime = 0;
+
+/* ---------------- toast ---------------- */
+let toastTimer;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 2600);
+}
+
+/* ---------------- time ---------------- */
+function ago(iso){
+  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
+  if(m < 1)    return 'just now';
+  if(m < 60)   return m + 'm ago';
+  if(m < 1440) return Math.floor(m/60) + 'h ago';
+  return Math.floor(m/1440) + 'd ago';
+}
+
+/* ---------------- distance ---------------- */
+function metresBetween(a, b){
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/* ---------------- alerts ---------------- */
+function showAlert(msg, kind, key){
+  if(!watchOn) return;
+  const now = Date.now();
+  if(key && key === lastAlertKey && now - lastAlertTime < ALERT_COOLDOWN) return;
+  lastAlertKey = key || null;
+  lastAlertTime = now;
+
+  const bar = document.getElementById('alertBar');
+  document.getElementById('alertMsg').textContent = msg;
+  bar.className = 'alert on ' + (kind === 'danger' ? 'danger' : 'info');
+  if(kind === 'danger' && navigator.vibrate) navigator.vibrate([200, 90, 200]);
+  else if(navigator.vibrate) navigator.vibrate(60);
+}
+function hideAlert(){
+  document.getElementById('alertBar').className = 'alert';
+}
+document.getElementById('alertClose').addEventListener('click', hideAlert);
+
+document.getElementById('watchBtn').addEventListener('click', () => {
+  watchOn = !watchOn;
+  localStorage.setItem('tw_alerts', watchOn ? 'on' : 'off');
+  const b = document.getElementById('watchBtn');
+  b.setAttribute('aria-pressed', String(watchOn));
+  b.textContent = watchOn ? 'Alerts on' : 'Alerts off';
+  if(watchOn){ startWatching(); toast('Alerts on. You will be warned as you move.'); }
+  else { stopWatching(); hideAlert(); toast('Alerts off'); }
+});
+
+/* ---------------- map ---------------- */
+function initMap(){
+  map = L.map('map', { zoomControl:false, attributionControl:true })
+         .setView([pos.lat, pos.lng], 14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution:'© OpenStreetMap, © CARTO', maxZoom:19
+  }).addTo(map);
+  L.control.zoom({ position:'bottomleft' }).addTo(map);
+  layer = L.layerGroup().addTo(map);
+}
+
+function pinColor(sev, iso){
+  const days = (Date.now() - new Date(iso)) / 86400000;
+  const base = sev >= 3 ? '#FF5C5C' : sev === 2 ? '#F5A623' : '#F5C21B';
+  return days > 14 ? base + '80' : base;
+}
+
+function drawPins(rows){
+  if(!layer) return;
+  layer.clearLayers();
+  rows.forEach(r => {
+    L.circleMarker([r.lat, r.lng], {
+      radius: 7 + Math.min(r.confirm_count, 5),
+      color: pinColor(r.severity, r.created_at),
+      fillColor: pinColor(r.severity, r.created_at),
+      fillOpacity: .55, weight: 2
+    }).addTo(layer).bindPopup(
+      `<b>${CAT_LABEL[r.category] || r.category}</b><br>` +
+      `${r.stop_name ? r.stop_name + '<br>' : ''}` +
+      `<small>${ago(r.created_at)} · ${r.confirm_count} confirmed</small>`
+    );
+  });
+  if(meMarker) meMarker.remove();
+  meMarker = L.circleMarker([pos.lat, pos.lng], {
+    radius:6, color:'#2FD48A', fillColor:'#2FD48A', fillOpacity:1, weight:3
+  }).addTo(map).bindPopup('You');
+}
+
+/* ---------------- data ---------------- */
+async function loadReports(){
+  const { data, error } = await db.rpc('nearby_reports', {
+    in_lat: pos.lat, in_lng: pos.lng, radius_km: 5, max_age_days: 30
+  });
+  if(error){ toast('Could not load reports'); console.error(error); return; }
+  drawPins(data || []);
+  renderList(data || []);
+}
+
+async function loadScore(){
+  const { data, error } = await db.rpc('safety_score', {
+    in_lat: pos.lat, in_lng: pos.lng, radius_km: 0.5
+  });
+  if(error || !data || !data.length) return;
+  const { score, report_count } = data[0];
+  document.getElementById('scoreNum').textContent = score;
+  document.getElementById('scoreBar').style.width = score + '%';
+  document.getElementById('scoreBar').style.background =
+    score >= 75 ? 'var(--safe)' : score >= 45 ? 'var(--signal)' : 'var(--alert)';
+  document.getElementById('scoreText').textContent =
+    report_count === 0
+      ? 'Nothing reported within a half kilometre in the last 30 days'
+      : `${report_count} report${report_count === 1 ? '' : 's'} within a half kilometre this month`;
+
+  /* warn on entering a rough stretch */
+  if(!haveFix) return;
+  const zone = `${pos.lat.toFixed(3)},${pos.lng.toFixed(3)}`;
+  if(score <= DANGER_BELOW){
+    showAlert(
+      `Heads up — ${report_count} recent report${report_count === 1 ? '' : 's'} right around you. Consider waiting at a busier stop.`,
+      'danger', 'danger:' + zone);
+  } else if(score <= CAUTION_BELOW){
+    showAlert(
+      `${report_count} report${report_count === 1 ? '' : 's'} near this stop in the last month.`,
+      'info', 'caution:' + zone);
+  } else {
+    hideAlert();
+  }
+}
+
+function renderList(rows){
+  const el = document.getElementById('nearList');
+  if(!rows.length){
+    el.innerHTML = `<div class="empty"><strong>Nothing reported nearby</strong>
+      Be the first rider to flag something at your stop.</div>`;
+    return;
+  }
+  const done = confirmedLocally();
+  el.innerHTML = rows.map(r => `
+    <article class="card s${r.severity}">
+      <h3>${CAT_LABEL[r.category] || r.category}</h3>
+      ${r.description ? `<p>${escapeHtml(r.description)}</p>` : ''}
+      <div class="meta">
+        <span>${ago(r.created_at)}</span>
+        ${r.stop_name ? `<span>${escapeHtml(r.stop_name)}</span>` : ''}
+        ${r.route ? `<span>${escapeHtml(r.route)}</span>` : ''}
+        <span>${r.distance_km < 1
+          ? Math.round(r.distance_km * 1000) + ' m away'
+          : r.distance_km.toFixed(1) + ' km away'}</span>
+        <span>${r.confirm_count} confirmed</span>
+      </div>
+      <button class="confirm" data-id="${r.id}" ${done.includes(r.id) ? 'disabled' : ''}>
+        ${done.includes(r.id) ? 'You confirmed this' : 'Still happening'}
+      </button>
+    </article>`).join('');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------- confirm ---------------- */
+document.getElementById('nearList').addEventListener('click', async e => {
+  const btn = e.target.closest('.confirm');
+  if(!btn || btn.disabled) return;
+  btn.disabled = true; btn.textContent = 'Confirming…';
+  const { error } = await db.from('report_confirmations')
+    .insert({ report_id: btn.dataset.id, confirmer_token: deviceToken() });
+  if(error && error.code !== '23505'){
+    btn.disabled = false; btn.textContent = 'Still happening';
+    toast('Could not confirm — try again');
+    return;
+  }
+  markConfirmed(btn.dataset.id);
+  btn.textContent = 'You confirmed this';
+  toast('Confirmed');
+  loadScore();
+});
+
+/* ---------------- form ---------------- */
+function buildChips(){
+  document.getElementById('catChips').innerHTML = CATEGORIES.map(c =>
+    `<button type="button" class="chip" data-cat="${c.id}" aria-pressed="false">${c.label}</button>`
+  ).join('');
+}
+document.getElementById('catChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-cat]'); if(!b) return;
+  document.querySelectorAll('#catChips .chip').forEach(c => c.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+  selectedCat = b.dataset.cat;
+});
+document.getElementById('sevChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-sev]'); if(!b) return;
+  document.querySelectorAll('#sevChips .chip').forEach(c => c.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+  selectedSev = Number(b.dataset.sev);
+});
+
+document.getElementById('reportForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if(!selectedCat){ toast('Pick what happened first'); return; }
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'Posting…';
+
+  const { error } = await db.from('reports').insert({
+    category: selectedCat,
+    severity: selectedSev,
+    description: document.getElementById('desc').value.trim() || null,
+    lat: pos.lat, lng: pos.lng,
+    route: document.getElementById('route').value.trim() || null,
+    stop_name: document.getElementById('stop').value.trim() || null,
+    reporter_token: deviceToken()
+  });
+
+  btn.disabled = false; btn.textContent = 'Post report';
+  if(error){ console.error(error); toast('Report did not post — try again'); return; }
+
+  e.target.reset();
+  document.querySelectorAll('#catChips .chip').forEach(c => c.setAttribute('aria-pressed','false'));
+  selectedCat = null;
+  toast('Posted. Other riders can see it now.');
+  switchView('near');
+  await Promise.all([loadReports(), loadScore()]);
+});
+
+/* ---------------- views ---------------- */
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.getElementById('v-' + name).classList.add('on');
+  document.querySelectorAll('nav button').forEach(b =>
+    b.setAttribute('aria-current', String(b.dataset.view === name)));
+  if(name === 'map' && map) setTimeout(() => map.invalidateSize(), 60);
+}
+document.querySelector('nav').addEventListener('click', e => {
+  const b = e.target.closest('[data-view]'); if(b) switchView(b.dataset.view);
+});
+
+/* ---------------- location ---------------- */
+function locate(){
+  if(!navigator.geolocation){ afterFix('Location off — showing downtown'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      applyPosition(p, true);
+      afterFix(`${pos.lat.toFixed(3)}, ${pos.lng.toFixed(3)}`);
+      if(watchOn) startWatching();
+    },
+    () => afterFix('Location off — showing downtown'),
+    { enableHighAccuracy:true, timeout:8000, maximumAge:60000 }
+  );
+}
+
+function applyPosition(p, recentre){
+  pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+  haveFix = true;
+  if(map && recentre) map.setView([pos.lat, pos.lng], 15);
+  document.getElementById('locLabel').textContent =
+    `${pos.lat.toFixed(3)}, ${pos.lng.toFixed(3)}`;
+}
+
+/* continuous watch — rescoring only after real movement, to spare the battery */
+function startWatching(){
+  if(watchId !== null || !navigator.geolocation) return;
+  watchId = navigator.geolocation.watchPosition(
+    p => {
+      applyPosition(p, false);
+      if(meMarker) meMarker.setLatLng([pos.lat, pos.lng]);
+      if(!lastScoredAt || metresBetween(lastScoredAt, pos) >= RESCORE_METRES){
+        lastScoredAt = { ...pos };
+        loadScore();
+        loadReports();
+      }
+    },
+    err => console.warn('watch failed', err),
+    { enableHighAccuracy:true, maximumAge:15000, timeout:20000 }
+  );
+}
+function stopWatching(){
+  if(watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+}
+
+/* stop burning GPS while the app is backgrounded */
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) stopWatching();
+  else if(watchOn && haveFix){ startWatching(); loadScore(); }
+});
+function afterFix(label){
+  document.getElementById('locLabel').textContent = label;
+  document.getElementById('pinNote').textContent = haveFix
+    ? 'Pinned to your current location. No account, no name attached.'
+    : 'Location is off, so this pins to downtown Detroit. Turn location on for accurate reports.';
+  loadReports(); loadScore();
+}
+
+/* ---------------- live updates ---------------- */
+db.channel('reports-live')
+  .on('postgres_changes', { event:'INSERT', schema:'public', table:'reports' }, payload => {
+    const r = payload.new;
+    loadReports(); loadScore();
+    if(!r || !haveFix) return;
+    const d = metresBetween(pos, { lat:r.lat, lng:r.lng });
+    if(d > NEARBY_METRES) return;
+    const how = d < 1000 ? Math.round(d / 10) * 10 + ' m' : (d/1000).toFixed(1) + ' km';
+    showAlert(
+      `New report ${how} away: ${CAT_LABEL[r.category] || r.category}`,
+      r.severity >= 3 ? 'danger' : 'info',
+      'new:' + r.id
+    );
+  })
+  .subscribe();
+
+/* ---------------- boot ---------------- */
+const wb = document.getElementById('watchBtn');
+wb.setAttribute('aria-pressed', String(watchOn));
+wb.textContent = watchOn ? 'Alerts on' : 'Alerts off';
+
+buildChips();
+initMap();
+locate();
+</script>
+</body>
+</html>
