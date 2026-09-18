@@ -177,6 +177,23 @@
   .digest-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
   .digest pre{margin:11px 0 0;white-space:pre-wrap;word-break:break-word;
     font:14px/1.6 Inter,sans-serif;color:var(--paper)}
+
+  /* ---- help / resources ---- */
+  .help-filters{display:flex;gap:7px;overflow-x:auto;padding:13px 16px;
+    border-bottom:1px solid var(--rail);-webkit-overflow-scrolling:touch}
+  .help-filters::-webkit-scrollbar{display:none}
+  .help-filters .chip{white-space:nowrap;flex:none}
+  .res{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--rail)}
+  .res-ic{font-size:21px;line-height:1.2;flex:none;width:26px;text-align:center}
+  .res-b{flex:1;min-width:0}
+  .res-n{font-weight:600;font-size:15px;margin:0 0 2px}
+  .res-m{font-size:13px;color:var(--muted);margin:0;line-height:1.45}
+  .res-d{font-size:12.5px;color:var(--signal);font-variant-numeric:tabular-nums;
+    white-space:nowrap;flex:none;align-self:flex-start}
+  .res-verified{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;
+    letter-spacing:.06em;color:var(--safe);text-transform:uppercase;vertical-align:1px}
+  .res a{color:var(--paper);text-decoration:none}
+  .res a:active{opacity:.6}
 </style>
 </head>
 <body>
@@ -262,12 +279,19 @@
         <p class="note" id="pinNote">Pinned to your current location. No account, no name attached.</p>
       </form>
     </section>
+    <section class="view" id="v-help">
+      <div class="help-filters" id="helpFilters"></div>
+      <div class="list" id="helpList">
+        <div class="empty">Finding places near you…</div>
+      </div>
+    </section>
   </main>
 
   <nav>
     <button data-view="map" aria-current="true"><span class="g">🗺</span>Map</button>
     <button data-view="report"><span class="g">✚</span>Report</button>
     <button data-view="near"><span class="g">☰</span>Nearby</button>
+    <button data-view="help"><span class="g">✚</span>Help</button>
   </nav>
 </div>
 
@@ -569,6 +593,7 @@ function switchView(name){
   document.querySelectorAll('nav button').forEach(b =>
     b.setAttribute('aria-current', String(b.dataset.view === name)));
   if(name === 'map' && map) setTimeout(() => map.invalidateSize(), 60);
+  if(name === 'help') loadResources();
 }
 document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('[data-view]'); if(b) switchView(b.dataset.view);
@@ -749,6 +774,177 @@ document.getElementById('plainBtn').addEventListener('click', async e => {
   }
   btn.disabled = false;
 });
+
+
+/* ================= Nearby help / resources ================= */
+/* Two sources, merged:
+   1. OpenStreetMap Overpass  — live, keyless, wide coverage
+   2. CURATED                 — hand-checked Detroit anchors, marked "checked"
+   Curated entries win on conflict and always sort first.                    */
+
+const RES_KINDS = [
+  { id:'all',      label:'All',        icon:'📍' },
+  { id:'restroom', label:'Restroom',   icon:'🚻' },
+  { id:'water',    label:'Water',      icon:'🚰' },
+  { id:'pharmacy', label:'Pharmacy',   icon:'💊' },
+  { id:'food',     label:'Food',       icon:'🍲' },
+  { id:'indoors',  label:'Warm/Cool',  icon:'🏛' },
+];
+
+/* Hand-checked Detroit anchors. `checked` is the date the hours were last
+   confirmed — shown to the user so nothing here is silently stale. */
+const CURATED = [
+  { kind:'indoors', name:'Detroit Public Library — Main Branch',
+    lat:42.3585, lng:-83.0713, note:'Restrooms, water, seating, free wifi',
+    hours:'Tue–Sat, check branch hours', checked:'2026-09' },
+  { kind:'indoors', name:'Rosa Parks Transit Center',
+    lat:42.3320, lng:-83.0522, note:'Indoor waiting, restrooms, staffed',
+    hours:'Daily, early morning to late evening', checked:'2026-09' },
+  { kind:'indoors', name:'Detroit Public Library — Skillman Branch',
+    lat:42.3352, lng:-83.0498, note:'Downtown, restrooms and seating',
+    hours:'Check branch hours', checked:'2026-09' },
+  { kind:'food', name:'Capuchin Soup Kitchen — Conner',
+    lat:42.3919, lng:-82.9887, note:'Hot meals, no ID required',
+    hours:'Meal times vary — call ahead', checked:'2026-09' },
+  { kind:'indoors', name:'Campus Martius Park',
+    lat:42.3314, lng:-83.0466, note:'Public seating, seasonal restrooms',
+    hours:'Daylight hours', checked:'2026-09' },
+];
+
+let resKind = 'all', resCache = null, resCacheKey = null;
+
+function metres(aLat, aLng, bLat, bLng){
+  const R = 6371000, t = Math.PI/180;
+  const dLat = (bLat-aLat)*t, dLng = (bLng-aLng)*t;
+  const x = Math.sin(dLat/2)**2 +
+            Math.cos(aLat*t)*Math.cos(bLat*t)*Math.sin(dLng/2)**2;
+  return Math.round(2*R*Math.asin(Math.sqrt(x)));
+}
+function walkTime(m){
+  const min = Math.round(m/80);           // ~4.8 km/h
+  return min < 1 ? '1 min' : min + ' min';
+}
+
+/* ---- map OSM tags onto our kinds ---- */
+function osmKind(t = {}){
+  if(t.amenity === 'toilets') return 'restroom';
+  if(t.amenity === 'drinking_water' || t.drinking_water === 'yes') return 'water';
+  if(t.amenity === 'pharmacy' || t.healthcare === 'pharmacy') return 'pharmacy';
+  if(t.social_facility === 'food_bank' || t.amenity === 'food_bank') return 'food';
+  if(t.amenity === 'library' || t.amenity === 'community_centre') return 'indoors';
+  return null;
+}
+
+async function fetchOverpass(lat, lng){
+  const q = `[out:json][timeout:20];
+(
+  node["amenity"~"^(toilets|drinking_water|pharmacy|library|community_centre|food_bank)$"](around:1600,${lat},${lng});
+  way["amenity"~"^(toilets|pharmacy|library|community_centre)$"](around:1600,${lat},${lng});
+  node["social_facility"="food_bank"](around:1600,${lat},${lng});
+);
+out center 60;`;
+
+  const r = await fetch('https://overpass-api.de/api/interpreter', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+    body:'data=' + encodeURIComponent(q)
+  });
+  if(!r.ok) throw new Error('Overpass ' + r.status);
+  const data = await r.json();
+
+  return (data.elements || []).map(el => {
+    const t = el.tags || {};
+    const kind = osmKind(t);
+    if(!kind) return null;
+    const la = el.lat ?? el.center?.lat, ln = el.lon ?? el.center?.lon;
+    if(la == null || ln == null) return null;
+    return {
+      kind, name: t.name || RES_KINDS.find(k => k.id === kind).label,
+      lat: la, lng: ln,
+      note: [t['toilets:disposal'] ? null : null, t.opening_hours ? null : null]
+              .filter(Boolean).join(' · ') || null,
+      hours: t.opening_hours || null,
+      fee: t.fee === 'yes',
+      wheelchair: t.wheelchair === 'yes',
+      checked: null
+    };
+  }).filter(Boolean);
+}
+
+async function loadResources(){
+  const el = document.getElementById('helpList');
+  if(!pos){ el.innerHTML = '<div class="empty">Turn on location to find places near you.</div>'; return; }
+
+  const key = pos.lat.toFixed(3) + ',' + pos.lng.toFixed(3);
+  if(resCacheKey !== key){
+    el.innerHTML = '<div class="empty">Finding places near you…</div>';
+    let osm = [];
+    try{
+      osm = await fetchOverpass(pos.lat, pos.lng);
+    }catch(e){
+      console.warn('overpass', e);   // curated list still renders
+    }
+    const near = CURATED.filter(c => metres(pos.lat, pos.lng, c.lat, c.lng) <= 4000);
+    const names = new Set(near.map(c => c.name.toLowerCase()));
+    resCache = [
+      ...near.map(c => ({ ...c, curated:true })),
+      ...osm.filter(o => !names.has((o.name||'').toLowerCase()))
+    ];
+    resCacheKey = key;
+  }
+
+  renderResources();
+}
+
+function renderResources(){
+  const el = document.getElementById('helpList');
+  const list = (resCache || [])
+    .map(r => ({ ...r, m: metres(pos.lat, pos.lng, r.lat, r.lng) }))
+    .filter(r => resKind === 'all' || r.kind === resKind)
+    .sort((a,b) => (b.curated?1:0)-(a.curated?1:0) || a.m - b.m)
+    .slice(0, 40);
+
+  if(!list.length){
+    el.innerHTML = '<div class="empty">Nothing of that kind mapped within a mile.<br>Try “All”.</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(r => {
+    const ic = RES_KINDS.find(k => k.id === r.kind)?.icon || '📍';
+    const bits = [];
+    if(r.note)  bits.push(escapeHtml(r.note));
+    if(r.hours) bits.push(escapeHtml(r.hours));
+    if(r.fee)   bits.push('May charge');
+    if(r.wheelchair) bits.push('Step-free');
+    if(r.checked) bits.push('Hours checked ' + r.checked);
+    const maps = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}`;
+    return `<div class="res">
+      <div class="res-ic">${ic}</div>
+      <div class="res-b">
+        <p class="res-n"><a href="${maps}" target="_blank" rel="noopener">${escapeHtml(r.name)}</a>${
+          r.curated ? '<span class="res-verified">checked</span>' : ''}</p>
+        ${bits.length ? `<p class="res-m">${bits.join(' · ')}</p>` : ''}
+      </div>
+      <div class="res-d">${walkTime(r.m)}</div>
+    </div>`;
+  }).join('');
+}
+
+function buildResFilters(){
+  document.getElementById('helpFilters').innerHTML = RES_KINDS.map(k =>
+    `<button type="button" class="chip" data-kind="${k.id}" aria-pressed="${k.id==='all'}">${k.icon} ${k.label}</button>`
+  ).join('');
+}
+
+document.getElementById('helpFilters').addEventListener('click', e => {
+  const b = e.target.closest('[data-kind]'); if(!b) return;
+  document.querySelectorAll('#helpFilters .chip').forEach(c => c.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+  resKind = b.dataset.kind;
+  renderResources();
+});
+
+buildResFilters();
 
 </script>
 </body>
