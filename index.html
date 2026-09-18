@@ -218,8 +218,8 @@
   /* ---- routes ---- */
   .rt{padding:15px 16px;border-bottom:1px solid var(--rail);cursor:pointer}
   .rt-h{display:flex;align-items:baseline;gap:10px}
-  .rt-n{font-family:'Archivo Narrow',sans-serif;font-size:19px;font-weight:700;
-    letter-spacing:.02em;margin:0}
+  .rt-n{font-size:14.5px;font-weight:600;margin:0;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
   .rt-c{margin-left:auto;font-size:12.5px;color:var(--muted);
     font-variant-numeric:tabular-nums;white-space:nowrap}
   .rt-m{margin:5px 0 0;font-size:13.5px;color:var(--muted);line-height:1.45}
@@ -237,6 +237,24 @@
   .stop-n{font-weight:600;font-size:14.5px;margin:0 0 3px}
   .stop-m{font-size:12.5px;color:var(--muted);margin:0}
   .stop-c{font-variant-numeric:tabular-nums;font-size:13px;color:var(--signal);white-space:nowrap}
+
+  .rt-controls{padding:13px 16px 4px;border-bottom:1px solid var(--rail)}
+  .rt-controls .chips{display:flex;gap:7px;margin-bottom:10px}
+  #rtSearch{width:100%;background:var(--surface);border:1px solid var(--rail);
+    color:var(--paper);border-radius:10px;padding:12px;font-size:16px;font-family:Inter,sans-serif}
+  .rt-note{font-size:12px;color:var(--muted);line-height:1.45;margin:9px 0 10px}
+  .rt-badge{display:inline-block;background:var(--raised);color:#fff;border-radius:6px;
+    padding:3px 8px;font:700 12px 'Archivo Narrow',sans-serif;letter-spacing:.04em;
+    white-space:nowrap;flex:none}
+  .rt-badge.big{font-size:14px;padding:5px 11px}
+  .rt-score{margin-left:auto;font-family:'Archivo Narrow',sans-serif;font-size:21px;
+    font-weight:700;font-variant-numeric:tabular-nums;flex:none}
+  .s-safe{color:var(--safe)} .s-watch{color:var(--warn)} .s-alert{color:var(--alert)}
+  .rt-head{padding:12px 16px 14px;border-bottom:1px solid var(--rail)}
+  .rt-scorebig{font-family:'Archivo Narrow',sans-serif;font-size:40px;font-weight:700;
+    line-height:1;margin-top:8px}
+  .rt-scorebig small{font-size:14px;font-weight:600;color:var(--muted);margin-left:7px}
+  .stop-c{color:var(--signal);text-decoration:none;font-size:13px;font-weight:600;align-self:center}
 </style>
 </head>
 <body>
@@ -1133,69 +1151,134 @@ if(typeof map !== 'undefined' && map){
 }
 
 
-/* ================= Route intelligence ================= */
-let routeView = null;
+/* ================= Route network =================
+   Real DDOT + SMART routes from each agency's GTFS feed,
+   with TransitWatch report data layered on top. */
+
+let routeView = null, routeRows = null, routeAgency = 'all', routeQuery = '';
+
+function scoreBand(n){ return n >= 85 ? 'safe' : n >= 60 ? 'watch' : 'alert'; }
+function scoreWord(n){ return n >= 85 ? 'Safe' : n >= 60 ? 'Watch' : 'High concern'; }
 
 async function loadRoutes(){
   const el = document.getElementById('routeList');
-  if(routeView){ return loadRouteDetail(routeView); }
+  if(routeView) return loadRouteDetail(routeView);
 
-  el.innerHTML = '<div class="empty">Loading routes…</div>';
-  const { data, error } = await db.rpc('route_summary', { days: 30 });
-  if(error){ console.error(error); el.innerHTML = '<div class="empty">Could not load routes.</div>'; return; }
+  if(!routeRows){
+    el.innerHTML = '<div class="empty">Loading routes…</div>';
+    const { data, error } = await db.rpc('route_network', { days: 30 });
+    if(error){
+      console.error(error);
+      el.innerHTML = '<div class="empty">Could not load the route network.</div>';
+      return;
+    }
+    routeRows = data || [];
+  }
 
-  const rows = data || [];
+  if(!routeRows.length){
+    el.innerHTML = '<div class="empty">Route network not loaded yet.</div>';
+    return;
+  }
+  renderRoutes();
+}
+
+function renderRoutes(){
+  const el = document.getElementById('routeList');
+  const q = routeQuery.trim().toLowerCase();
+  const rows = routeRows.filter(r =>
+    (routeAgency === 'all' || r.agency === routeAgency) &&
+    (!q || (r.short_name||'').toLowerCase().includes(q)
+        || (r.long_name||'').toLowerCase().includes(q))
+  );
+
+  const head = `
+    <div class="rt-controls">
+      <div class="chips" id="rtAgency">
+        <button type="button" class="chip" data-ag="all"   aria-pressed="${routeAgency==='all'}">All</button>
+        <button type="button" class="chip" data-ag="DDOT"  aria-pressed="${routeAgency==='DDOT'}">DDOT</button>
+        <button type="button" class="chip" data-ag="SMART" aria-pressed="${routeAgency==='SMART'}">SMART</button>
+      </div>
+      <input type="search" id="rtSearch" placeholder="Search route or destination" value="${escapeHtml(routeQuery)}">
+      <p class="rt-note">Browse DDOT and SMART routes. Safety information appears as rider reports come in.</p>
+    </div>`;
+
   if(!rows.length){
-    el.innerHTML = '<div class="empty">No routes yet.<br>'
-      + 'Routes appear here once riders tag reports with a route number.</div>';
+    el.innerHTML = head + '<div class="empty">No routes match that search.</div>';
+    wireRouteControls();
     return;
   }
 
-  el.innerHTML = rows.map(r => {
-    const total = Number(r.reports);
-    const bad = Number(r.dangerous);
-    const pct = bad ? Math.round(bad/total*100) : 0;
-    const bits = [];
-    bits.push(total + ' report' + (total===1?'':'s'));
-    if(r.stops > 0) bits.push(r.stops + ' stop' + (r.stops==1?'':'s'));
-    if(r.confirms > 0) bits.push(r.confirms + ' confirmation' + (r.confirms==1?'':'s'));
-    return `<div class="rt" data-route="${escapeHtml(r.route)}">
+  el.innerHTML = head + rows.map(r => {
+    const score = Number(r.score);
+    const band  = scoreBand(score);
+    const n     = Number(r.reports);
+    const bits  = n
+      ? [`${n} report${n===1?'':'s'} in 30 days`,
+         Number(r.dangerous) ? `${r.dangerous} dangerous` : null,
+         Number(r.unresolved) ? `${r.unresolved} unresolved` : null,
+         r.last_at ? `last ${ago(r.last_at)}` : null].filter(Boolean).join(' · ')
+      : 'No incidents reported in the last 30 days';
+
+    return `<div class="rt" data-route="${escapeHtml(r.id)}">
       <div class="rt-h">
-        <p class="rt-n">${escapeHtml(r.route)}</p>
-        <span class="rt-c">${ago(r.last_at)}</span>
+        <span class="rt-badge" style="${r.color ? `background:${escapeHtml(r.color)}` : ''}">${escapeHtml(r.agency)} ${escapeHtml(r.short_name||'')}</span>
+        <p class="rt-n">${escapeHtml(r.long_name || '')}</p>
+        <span class="rt-score s-${band}">${score}</span>
       </div>
-      <p class="rt-m">${bits.join(' · ')}${
-        bad ? ` · <span class="rt-bad">${bad} marked dangerous</span>` : ''}</p>
-      <p class="rt-m">Most reported: ${escapeHtml(CATEGORIES.find(c=>c.id===r.top_issue)?.label || r.top_issue || '—')}</p>
-      <div class="rt-bar"><i class="b3" style="width:${pct}%"></i><i class="b1" style="width:${100-pct}%"></i></div>
+      <p class="rt-m">${scoreWord(score)} · ${bits}</p>
     </div>`;
   }).join('');
+
+  wireRouteControls();
 }
 
-async function loadRouteDetail(route){
-  const el = document.getElementById('routeList');
-  el.innerHTML = '<div class="empty">Loading…</div>';
-  const { data, error } = await db.rpc('route_stops', { in_route: route, days: 30 });
-  if(error){ console.error(error); el.innerHTML = '<div class="empty">Could not load this route.</div>'; return; }
+function wireRouteControls(){
+  const ag = document.getElementById('rtAgency');
+  if(ag) ag.addEventListener('click', e => {
+    const b = e.target.closest('[data-ag]'); if(!b) return;
+    routeAgency = b.dataset.ag;
+    renderRoutes();
+  });
+  const q = document.getElementById('rtSearch');
+  if(q) q.addEventListener('input', e => {
+    routeQuery = e.target.value;
+    const pos0 = e.target.selectionStart;
+    renderRoutes();
+    const nq = document.getElementById('rtSearch');
+    if(nq){ nq.focus(); nq.setSelectionRange(pos0, pos0); }
+  });
+}
 
+async function loadRouteDetail(id){
+  const el = document.getElementById('routeList');
+  const meta = (routeRows || []).find(r => r.id === id);
+  if(!meta){ routeView = null; return loadRoutes(); }
+
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  const label = `${meta.agency} ${meta.short_name}`;
+  const { data } = await db.rpc('route_stops', { in_route: label, days: 30 });
   const rows = data || [];
-  const total = rows.reduce((a,r) => a + Number(r.reports), 0);
-  const bad   = rows.reduce((a,r) => a + Number(r.dangerous), 0);
+  const score = Number(meta.score);
 
   el.innerHTML = `
     <button class="rt-back" id="rtBack">← All routes</button>
-    <h2 class="rt-title">${escapeHtml(route)}</h2>
-    <p class="rt-sub">${total} report${total===1?'':'s'} across ${rows.length} stop${rows.length===1?'':'s'} in the last 30 days${
-      bad ? ` · <span class="rt-bad">${bad} marked dangerous</span>` : ''}</p>
-    ${rows.map(r => `<div class="stop">
-      <div class="stop-b">
-        <p class="stop-n">${escapeHtml(r.stop_name)}</p>
-        <p class="stop-m">${r.reports} report${r.reports==1?'':'s'}${
-          r.dangerous ? ` · <span class="rt-bad">${r.dangerous} dangerous</span>` : ''}${
-          r.confirms ? ` · ${r.confirms} confirmed` : ''} · ${ago(r.last_at)}</p>
-      </div>
-      <span class="stop-c">${r.lat ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:none">Map</a>` : ''}</span>
-    </div>`).join('')}
+    <div class="rt-head">
+      <span class="rt-badge big" style="${meta.color ? `background:${escapeHtml(meta.color)}` : ''}">${escapeHtml(meta.agency)} ${escapeHtml(meta.short_name||'')}</span>
+      <h2 class="rt-title">${escapeHtml(meta.long_name || '')}</h2>
+      <div class="rt-scorebig s-${scoreBand(score)}">${score}<small>/100 · ${scoreWord(score)}</small></div>
+    </div>
+    ${rows.length
+      ? rows.map(r => `<div class="stop">
+          <div class="stop-b">
+            <p class="stop-n">${escapeHtml(r.stop_name)}</p>
+            <p class="stop-m">${r.reports} report${r.reports==1?'':'s'}${
+              r.dangerous ? ` · <span class="rt-bad">${r.dangerous} dangerous</span>` : ''}${
+              r.confirms ? ` · ${r.confirms} confirmed` : ''} · ${ago(r.last_at)}</p>
+          </div>
+          ${r.lat ? `<a class="stop-c" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}" target="_blank" rel="noopener">Map</a>` : ''}
+        </div>`).join('')
+      : `<div class="empty">No rider reports on this route in the last 30 days.<br>
+           Riding it? Post what you see.</div>`}
   `;
 }
 
