@@ -96,10 +96,37 @@
     .grid{display:grid;grid-template-columns:1fr 1fr}
     .grid section:first-child{border-right:1px solid var(--rail)}
   }
+
+  .gate{position:fixed;inset:0;z-index:9999;background:var(--ink);
+    display:flex;align-items:center;justify-content:center;padding:24px}
+  .gate-box{width:100%;max-width:330px}
+  .gate-sub{font-size:13.5px;color:var(--muted);margin:0 0 22px}
+  .gate-box input{width:100%;background:var(--surface);border:1px solid var(--rail);
+    color:var(--paper);border-radius:10px;padding:14px;font-size:16px;
+    font-family:Inter,sans-serif;margin-bottom:10px}
+  .gate-btn{width:100%;background:var(--signal);color:#08152B;border:0;border-radius:10px;
+    padding:15px;font:700 15px Inter,sans-serif;cursor:pointer;margin-top:4px}
+  .gate-btn:disabled{opacity:.5}
+  .gate-err{color:var(--alert);font-size:13.5px;margin:12px 0 0;line-height:1.5}
+  .signout{margin-left:auto;background:transparent;border:1px solid var(--rail);
+    color:var(--muted);border-radius:8px;padding:6px 11px;
+    font:600 12px Inter,sans-serif;cursor:pointer}
 </style>
 </head>
 <body>
 
+<div class="gate" id="gate">
+  <div class="gate-box">
+    <h1 class="brand" style="margin-bottom:6px">TRANSIT<span>WATCH</span></h1>
+    <p class="gate-sub">Command Center — agency access</p>
+    <input type="email" id="gEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="gPass" placeholder="Password" autocomplete="current-password">
+    <button class="gate-btn" id="gGo">Sign in</button>
+    <p class="gate-err" id="gErr" hidden></p>
+  </div>
+</div>
+
+<div id="app" hidden>
 <header>
   <h1 class="brand">TRANSIT<span>WATCH</span></h1>
   <div class="range" id="range">
@@ -108,6 +135,7 @@
     <button data-d="90">90d</button>
   </div>
   <p class="sub">Command Center — rider reports across the network</p>
+  <button class="signout" id="signout">Sign out</button>
 </header>
 
 <div class="kpis" id="kpis">
@@ -152,6 +180,8 @@
   <div class="sec-h"><h2>Report queue</h2></div>
   <div id="queue"><div class="empty">Loading…</div></div>
 </section>
+
+</div>
 
 <p class="foot">
   TransitWatch is a rider-reporting tool. It is not an emergency service and does not
@@ -346,8 +376,48 @@ db.channel('cc-live')
   .on('postgres_changes',{event:'*',schema:'public',table:'reports'}, refresh)
   .subscribe();
 
-initMap();
-refresh();
+
+/* ---------- access ---------- */
+async function showApp(){
+  document.getElementById('gate').hidden = true;
+  document.getElementById('app').hidden = false;
+  if(!map) initMap(); else setTimeout(() => map.invalidateSize(), 60);
+  refresh();
+}
+
+async function signIn(){
+  const btn = document.getElementById('gGo');
+  const err = document.getElementById('gErr');
+  const email = document.getElementById('gEmail').value.trim();
+  const pass  = document.getElementById('gPass').value;
+  if(!email || !pass){ err.hidden = false; err.textContent = 'Enter an email and password.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const { error } = await db.auth.signInWithPassword({ email, password: pass });
+  btn.disabled = false; btn.textContent = 'Sign in';
+
+  if(error){
+    err.hidden = false;
+    err.textContent = error.message || 'Could not sign in.';
+    return;
+  }
+  err.hidden = true;
+  showApp();
+}
+
+document.getElementById('gGo').addEventListener('click', signIn);
+document.getElementById('gPass').addEventListener('keydown', e => { if(e.key === 'Enter') signIn(); });
+
+document.getElementById('signout').addEventListener('click', async () => {
+  await db.auth.signOut();
+  location.reload();
+});
+
+/* resume an existing session */
+db.auth.getSession().then(({ data }) => {
+  if(data?.session) showApp();
+});
+
 </script>
 </body>
 </html>
