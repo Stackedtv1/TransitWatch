@@ -214,6 +214,29 @@
   .mapsrc{position:absolute;left:12px;right:12px;bottom:12px;z-index:500;margin:0;
     background:rgba(7,23,54,.92);border-radius:8px;padding:8px 11px;
     font-size:11.5px;line-height:1.45;color:var(--muted)}
+
+  /* ---- routes ---- */
+  .rt{padding:15px 16px;border-bottom:1px solid var(--rail);cursor:pointer}
+  .rt-h{display:flex;align-items:baseline;gap:10px}
+  .rt-n{font-family:'Archivo Narrow',sans-serif;font-size:19px;font-weight:700;
+    letter-spacing:.02em;margin:0}
+  .rt-c{margin-left:auto;font-size:12.5px;color:var(--muted);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .rt-m{margin:5px 0 0;font-size:13.5px;color:var(--muted);line-height:1.45}
+  .rt-bad{color:var(--alert);font-weight:600}
+  .rt-bar{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-top:9px;background:var(--rail)}
+  .rt-bar i{display:block}
+  .rt-bar .b3{background:var(--alert)} .rt-bar .b2{background:var(--warn)} .rt-bar .b1{background:var(--signal)}
+  .rt-back{background:transparent;border:0;color:var(--signal);font:600 14px Inter,sans-serif;
+    padding:14px 16px 0;cursor:pointer}
+  .rt-title{font-family:'Archivo Narrow',sans-serif;font-size:25px;font-weight:700;
+    margin:8px 16px 3px}
+  .rt-sub{margin:0 16px 14px;font-size:13.5px;color:var(--muted);line-height:1.5}
+  .stop{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid rgba(30,78,143,.5)}
+  .stop-b{flex:1;min-width:0}
+  .stop-n{font-weight:600;font-size:14.5px;margin:0 0 3px}
+  .stop-m{font-size:12.5px;color:var(--muted);margin:0}
+  .stop-c{font-variant-numeric:tabular-nums;font-size:13px;color:var(--signal);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -316,12 +339,16 @@
         <div class="empty">Finding places near you…</div>
       </div>
     </section>
+    <section class="view" id="v-routes">
+      <div id="routeList"><div class="empty">Loading routes…</div></div>
+    </section>
   </main>
 
   <nav>
     <button data-view="map" aria-current="true"><span class="g">🗺</span>Map</button>
     <button data-view="report"><span class="g">✚</span>Report</button>
     <button data-view="near"><span class="g">☰</span>Nearby</button>
+    <button data-view="routes"><span class="g">⑂</span>Routes</button>
     <button data-view="help"><span class="g">✚</span>Help</button>
   </nav>
 </div>
@@ -629,6 +656,7 @@ function switchView(name){
     b.setAttribute('aria-current', String(b.dataset.view === name)));
   if(name === 'map' && map) setTimeout(() => map.invalidateSize(), 60);
   if(name === 'help') loadResources();
+  if(name === 'routes') loadRoutes();
 }
 document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('[data-view]'); if(b) switchView(b.dataset.view);
@@ -812,147 +840,98 @@ document.getElementById('plainBtn').addEventListener('click', async e => {
 });
 
 
-/* ================= Nearby help / resources ================= */
-/* Two sources, merged:
-   1. OpenStreetMap Overpass  — live, keyless, wide coverage
-   2. CURATED                 — hand-checked Detroit anchors, marked "checked"
-   Curated entries win on conflict and always sort first.                    */
+/* ================= Nearby help / resources =================
+   Google Places (pharmacy, food, libraries) + OSM (restrooms, water),
+   both fetched server-side through tw-ai. Curated Detroit anchors on top. */
 
 const RES_KINDS = [
-  { id:'all',      label:'All',        icon:'📍' },
-  { id:'restroom', label:'Restroom',   icon:'🚻' },
-  { id:'water',    label:'Water',      icon:'🚰' },
-  { id:'pharmacy', label:'Pharmacy',   icon:'💊' },
-  { id:'food',     label:'Food',       icon:'🍲' },
-  { id:'indoors',  label:'Warm/Cool',  icon:'🏛' },
+  { id:'all',      label:'All',       icon:'📍' },
+  { id:'pharmacy', label:'Pharmacy',  icon:'💊' },
+  { id:'food',     label:'Food',      icon:'🍲' },
+  { id:'restroom', label:'Restroom',  icon:'🚻' },
+  { id:'water',    label:'Water',     icon:'🚰' },
+  { id:'indoors',  label:'Indoors',   icon:'🏛' },
 ];
 
-/* Hand-checked Detroit anchors. `checked` is the date the hours were last
-   confirmed — shown to the user so nothing here is silently stale. */
 const CURATED = [
   { kind:'indoors', name:'Detroit Public Library — Main Branch',
     lat:42.3585, lng:-83.0713, note:'Restrooms, water, seating, free wifi',
-    hours:'Tue–Sat, check branch hours', checked:'2026-09' },
+    hours:'Check branch hours', checked:'2026-09' },
   { kind:'indoors', name:'Rosa Parks Transit Center',
     lat:42.3320, lng:-83.0522, note:'Indoor waiting, restrooms, staffed',
-    hours:'Daily, early morning to late evening', checked:'2026-09' },
-  { kind:'indoors', name:'Detroit Public Library — Skillman Branch',
-    lat:42.3352, lng:-83.0498, note:'Downtown, restrooms and seating',
-    hours:'Check branch hours', checked:'2026-09' },
+    hours:'Daily, early to late', checked:'2026-09' },
   { kind:'food', name:'Capuchin Soup Kitchen — Conner',
     lat:42.3919, lng:-82.9887, note:'Hot meals, no ID required',
     hours:'Meal times vary — call ahead', checked:'2026-09' },
-  { kind:'indoors', name:'Campus Martius Park',
-    lat:42.3314, lng:-83.0466, note:'Public seating, seasonal restrooms',
-    hours:'Daylight hours', checked:'2026-09' },
 ];
 
-let resKind = 'all', resCache = null, resCacheKey = null;
+let resKind = 'all', resCache = null, resCacheKey = null, resProblems = [];
 
-function metres(aLat, aLng, bLat, bLng){
-  const R = 6371000, t = Math.PI/180;
-  const dLat = (bLat-aLat)*t, dLng = (bLng-aLng)*t;
-  const x = Math.sin(dLat/2)**2 +
-            Math.cos(aLat*t)*Math.cos(bLat*t)*Math.sin(dLng/2)**2;
+function metres(aLat,aLng,bLat,bLng){
+  const R=6371000,t=Math.PI/180;
+  const dLat=(bLat-aLat)*t,dLng=(bLng-aLng)*t;
+  const x=Math.sin(dLat/2)**2+Math.cos(aLat*t)*Math.cos(bLat*t)*Math.sin(dLng/2)**2;
   return Math.round(2*R*Math.asin(Math.sqrt(x)));
 }
-function walkTime(m){
-  const min = Math.round(m/80);           // ~4.8 km/h
-  return min < 1 ? '1 min' : min + ' min';
-}
-
-/* ---- map OSM tags onto our kinds ---- */
-function osmKind(t = {}){
-  if(t.amenity === 'toilets') return 'restroom';
-  if(t.amenity === 'drinking_water' || t.drinking_water === 'yes') return 'water';
-  if(t.amenity === 'pharmacy' || t.healthcare === 'pharmacy') return 'pharmacy';
-  if(t.social_facility === 'food_bank' || t.amenity === 'food_bank') return 'food';
-  if(t.amenity === 'library' || t.amenity === 'community_centre') return 'indoors';
-  return null;
-}
-
-async function fetchOverpass(lat, lng){
-  const q = `[out:json][timeout:20];
-(
-  node["amenity"~"^(toilets|drinking_water|pharmacy|library|community_centre|food_bank)$"](around:1600,${lat},${lng});
-  way["amenity"~"^(toilets|pharmacy|library|community_centre)$"](around:1600,${lat},${lng});
-  node["social_facility"="food_bank"](around:1600,${lat},${lng});
-);
-out center 60;`;
-
-  const r = await fetch('https://overpass-api.de/api/interpreter', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
-    body:'data=' + encodeURIComponent(q)
-  });
-  if(!r.ok) throw new Error('Overpass ' + r.status);
-  const data = await r.json();
-
-  return (data.elements || []).map(el => {
-    const t = el.tags || {};
-    const kind = osmKind(t);
-    if(!kind) return null;
-    const la = el.lat ?? el.center?.lat, ln = el.lon ?? el.center?.lon;
-    if(la == null || ln == null) return null;
-    return {
-      kind, name: t.name || RES_KINDS.find(k => k.id === kind).label,
-      lat: la, lng: ln,
-      note: [t['toilets:disposal'] ? null : null, t.opening_hours ? null : null]
-              .filter(Boolean).join(' · ') || null,
-      hours: t.opening_hours || null,
-      fee: t.fee === 'yes',
-      wheelchair: t.wheelchair === 'yes',
-      checked: null
-    };
-  }).filter(Boolean);
-}
+function walkTime(m){ const min=Math.round(m/80); return (min<1?1:min)+' min'; }
 
 async function loadResources(){
   const el = document.getElementById('helpList');
   if(!pos){ el.innerHTML = '<div class="empty">Turn on location to find places near you.</div>'; return; }
 
-  const key = pos.lat.toFixed(3) + ',' + pos.lng.toFixed(3);
+  const key = pos.lat.toFixed(3)+','+pos.lng.toFixed(3);
   if(resCacheKey !== key){
     el.innerHTML = '<div class="empty">Finding places near you…</div>';
-    let osm = [];
     try{
-      osm = await fetchOverpass(pos.lat, pos.lng);
+      const d = await ai({ action:'resources', lat:pos.lat, lng:pos.lng });
+      resProblems = d.problems || [];
+      const near = CURATED.filter(c => metres(pos.lat,pos.lng,c.lat,c.lng) <= 4000);
+      const names = new Set(near.map(c => c.name.toLowerCase()));
+      resCache = [
+        ...near.map(c => ({...c, curated:true})),
+        ...(d.places || []).filter(p => !names.has((p.name||'').toLowerCase()))
+      ];
+      resCacheKey = key;
     }catch(e){
-      console.warn('overpass', e);   // curated list still renders
+      console.error('resources', e);
+      el.innerHTML = '<div class="empty">Could not reach the places service.<br>'
+        + 'Check your connection and try the tab again.</div>';
+      return;
     }
-    const near = CURATED.filter(c => metres(pos.lat, pos.lng, c.lat, c.lng) <= 4000);
-    const names = new Set(near.map(c => c.name.toLowerCase()));
-    resCache = [
-      ...near.map(c => ({ ...c, curated:true })),
-      ...osm.filter(o => !names.has((o.name||'').toLowerCase()))
-    ];
-    resCacheKey = key;
   }
-
   renderResources();
 }
 
 function renderResources(){
   const el = document.getElementById('helpList');
-  const list = (resCache || [])
-    .map(r => ({ ...r, m: metres(pos.lat, pos.lng, r.lat, r.lng) }))
+  const all = (resCache || []).map(r => ({...r, m: metres(pos.lat,pos.lng,r.lat,r.lng)}));
+  const list = all
     .filter(r => resKind === 'all' || r.kind === resKind)
-    .sort((a,b) => (b.curated?1:0)-(a.curated?1:0) || a.m - b.m)
-    .slice(0, 40);
+    .sort((a,b) => (b.curated?1:0)-(a.curated?1:0) || a.m-b.m)
+    .slice(0,40);
 
   if(!list.length){
-    el.innerHTML = '<div class="empty">Nothing of that kind mapped within a mile.<br>Try “All”.</div>';
+    const why = resProblems.length
+      ? '<br><span style="color:var(--warn)">Some sources failed: ' + escapeHtml(resProblems[0]) + '</span>'
+      : '';
+    el.innerHTML = '<div class="empty">'
+      + (all.length ? 'Nothing of that kind within a mile.<br>Try “All”.'
+                    : 'No places found within a mile.')
+      + why + '</div>';
     return;
   }
 
   el.innerHTML = list.map(r => {
     const ic = RES_KINDS.find(k => k.id === r.kind)?.icon || '📍';
     const bits = [];
-    if(r.note)  bits.push(escapeHtml(r.note));
-    if(r.hours) bits.push(escapeHtml(r.hours));
-    if(r.fee)   bits.push('May charge');
-    if(r.wheelchair) bits.push('Step-free');
-    if(r.checked) bits.push('Hours checked ' + r.checked);
+    if(r.note)      bits.push(escapeHtml(r.note));
+    if(r.vicinity)  bits.push(escapeHtml(r.vicinity));
+    if(r.open === true)  bits.push('Open now');
+    if(r.open === false) bits.push('Closed now');
+    if(r.hours)     bits.push(escapeHtml(r.hours));
+    if(r.fee)       bits.push('May charge');
+    if(r.wheelchair)bits.push('Step-free');
+    if(r.checked)   bits.push('Hours checked ' + r.checked);
     const maps = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}`;
     return `<div class="res">
       <div class="res-ic">${ic}</div>
@@ -1152,6 +1131,79 @@ if(typeof map !== 'undefined' && map){
     }, 600);
   });
 }
+
+
+/* ================= Route intelligence ================= */
+let routeView = null;
+
+async function loadRoutes(){
+  const el = document.getElementById('routeList');
+  if(routeView){ return loadRouteDetail(routeView); }
+
+  el.innerHTML = '<div class="empty">Loading routes…</div>';
+  const { data, error } = await db.rpc('route_summary', { days: 30 });
+  if(error){ console.error(error); el.innerHTML = '<div class="empty">Could not load routes.</div>'; return; }
+
+  const rows = data || [];
+  if(!rows.length){
+    el.innerHTML = '<div class="empty">No routes yet.<br>'
+      + 'Routes appear here once riders tag reports with a route number.</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(r => {
+    const total = Number(r.reports);
+    const bad = Number(r.dangerous);
+    const pct = bad ? Math.round(bad/total*100) : 0;
+    const bits = [];
+    bits.push(total + ' report' + (total===1?'':'s'));
+    if(r.stops > 0) bits.push(r.stops + ' stop' + (r.stops==1?'':'s'));
+    if(r.confirms > 0) bits.push(r.confirms + ' confirmation' + (r.confirms==1?'':'s'));
+    return `<div class="rt" data-route="${escapeHtml(r.route)}">
+      <div class="rt-h">
+        <p class="rt-n">${escapeHtml(r.route)}</p>
+        <span class="rt-c">${ago(r.last_at)}</span>
+      </div>
+      <p class="rt-m">${bits.join(' · ')}${
+        bad ? ` · <span class="rt-bad">${bad} marked dangerous</span>` : ''}</p>
+      <p class="rt-m">Most reported: ${escapeHtml(CATEGORIES.find(c=>c.id===r.top_issue)?.label || r.top_issue || '—')}</p>
+      <div class="rt-bar"><i class="b3" style="width:${pct}%"></i><i class="b1" style="width:${100-pct}%"></i></div>
+    </div>`;
+  }).join('');
+}
+
+async function loadRouteDetail(route){
+  const el = document.getElementById('routeList');
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  const { data, error } = await db.rpc('route_stops', { in_route: route, days: 30 });
+  if(error){ console.error(error); el.innerHTML = '<div class="empty">Could not load this route.</div>'; return; }
+
+  const rows = data || [];
+  const total = rows.reduce((a,r) => a + Number(r.reports), 0);
+  const bad   = rows.reduce((a,r) => a + Number(r.dangerous), 0);
+
+  el.innerHTML = `
+    <button class="rt-back" id="rtBack">← All routes</button>
+    <h2 class="rt-title">${escapeHtml(route)}</h2>
+    <p class="rt-sub">${total} report${total===1?'':'s'} across ${rows.length} stop${rows.length===1?'':'s'} in the last 30 days${
+      bad ? ` · <span class="rt-bad">${bad} marked dangerous</span>` : ''}</p>
+    ${rows.map(r => `<div class="stop">
+      <div class="stop-b">
+        <p class="stop-n">${escapeHtml(r.stop_name)}</p>
+        <p class="stop-m">${r.reports} report${r.reports==1?'':'s'}${
+          r.dangerous ? ` · <span class="rt-bad">${r.dangerous} dangerous</span>` : ''}${
+          r.confirms ? ` · ${r.confirms} confirmed` : ''} · ${ago(r.last_at)}</p>
+      </div>
+      <span class="stop-c">${r.lat ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:none">Map</a>` : ''}</span>
+    </div>`).join('')}
+  `;
+}
+
+document.getElementById('routeList').addEventListener('click', e => {
+  if(e.target.closest('#rtBack')){ routeView = null; loadRoutes(); return; }
+  const card = e.target.closest('[data-route]');
+  if(card){ routeView = card.dataset.route; loadRouteDetail(routeView); }
+});
 
 </script>
 </body>
