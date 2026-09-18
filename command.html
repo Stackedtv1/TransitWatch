@@ -111,6 +111,19 @@
   .signout{margin-left:auto;background:transparent;border:1px solid var(--rail);
     color:var(--muted);border-radius:8px;padding:6px 11px;
     font:600 12px Inter,sans-serif;cursor:pointer}
+
+  .livebar{display:flex;align-items:center;gap:8px;padding:9px 18px;
+    border-bottom:1px solid var(--rail);font-size:12.5px;color:var(--muted)}
+  .livebar.flash{background:rgba(47,212,138,.13);color:var(--paper)}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--safe);flex:none;
+    animation:pl 2.4s ease-out infinite}
+  .pulse.off{background:var(--muted);animation:none}
+  @keyframes pl{
+    0%{box-shadow:0 0 0 0 rgba(47,212,138,.65)}
+    70%{box-shadow:0 0 0 7px rgba(47,212,138,0)}
+    100%{box-shadow:0 0 0 0 rgba(47,212,138,0)}
+  }
+  @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
 </style>
 </head>
 <body>
@@ -145,6 +158,11 @@
   <div class="kpi"><b id="kConf">—</b><span>Rider-confirmed</span></div>
   <div class="kpi done"><b id="kDone">—</b><span>Resolved</span></div>
   <div class="kpi"><b id="kRiders">—</b><span>Reporting riders</span></div>
+</div>
+
+<div class="livebar" id="liveBar">
+  <span class="pulse" id="pulse"></span>
+  <span id="liveTxt">Connecting…</span>
 </div>
 
 <section>
@@ -370,11 +388,42 @@ $('range').addEventListener('click', e => {
   refresh();
 });
 
-function refresh(){ loadStats(); loadTrend(); loadTop(); loadQueue(); }
+function refresh(){ loadStats(); loadTrend(); loadTop(); loadQueue().then(() => markSynced(false)); }
+
+let lastSync = 0, liveOk = false;
+
+function paintLive(){
+  const txt = $('liveTxt'), dot = $('pulse');
+  if(!txt) return;
+  if(!liveOk){ txt.textContent = 'Connecting…'; dot.classList.add('off'); return; }
+  dot.classList.remove('off');
+  const s = Math.round((Date.now() - lastSync) / 1000);
+  const when = s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s/60) + 'm ago';
+  txt.textContent = 'Live · updated ' + when;
+}
+function markSynced(flash){
+  lastSync = Date.now(); liveOk = true;
+  if(flash){
+    const bar = $('liveBar');
+    bar.classList.add('flash');
+    setTimeout(() => bar.classList.remove('flash'), 1800);
+  }
+  paintLive();
+}
+setInterval(paintLive, 5000);
 
 db.channel('cc-live')
-  .on('postgres_changes',{event:'*',schema:'public',table:'reports'}, refresh)
-  .subscribe();
+  .on('postgres_changes',{event:'*',schema:'public',table:'reports'}, p => {
+    refresh();
+    markSynced(p.eventType === 'INSERT');
+  })
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'report_confirmations'}, () => {
+    refresh(); markSynced(false);
+  })
+  .subscribe(status => {
+    if(status === 'SUBSCRIBED') markSynced(false);
+    if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){ liveOk = false; paintLive(); }
+  });
 
 
 /* ---------- access ---------- */

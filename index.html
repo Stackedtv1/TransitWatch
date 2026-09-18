@@ -255,6 +255,44 @@
     line-height:1;margin-top:8px}
   .rt-scorebig small{font-size:14px;font-weight:600;color:var(--muted);margin-left:7px}
   .stop-c{color:var(--signal);text-decoration:none;font-size:13px;font-weight:600;align-self:center}
+
+  /* ---- live bar ---- */
+  .livebar{display:flex;align-items:center;gap:8px;padding:8px 16px;
+    background:var(--ink);border-bottom:1px solid var(--rail);
+    font-size:12.5px;color:var(--muted)}
+  .livebar.flash{background:rgba(47,212,138,.13);color:var(--paper)}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--safe);flex:none;
+    box-shadow:0 0 0 0 rgba(47,212,138,.7);animation:pl 2.4s ease-out infinite}
+  .pulse.off{background:var(--muted);animation:none;box-shadow:none}
+  @keyframes pl{
+    0%{box-shadow:0 0 0 0 rgba(47,212,138,.65)}
+    70%{box-shadow:0 0 0 7px rgba(47,212,138,0)}
+    100%{box-shadow:0 0 0 0 rgba(47,212,138,0)}
+  }
+  @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+
+  /* ---- live bus layer ---- */
+  .maptog.t2{top:58px}
+  .maptog.t2[aria-pressed="true"]{border-color:var(--safe);color:var(--safe)}
+  .bus{display:flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:7px;background:var(--safe);color:#07301C;
+    font:700 10.5px 'Archivo Narrow',sans-serif;border:2px solid rgba(255,255,255,.85);
+    box-shadow:0 2px 7px rgba(0,0,0,.45)}
+
+  /* ---- weather ---- */
+  .wx{margin-left:auto;display:flex;align-items:center;gap:6px;
+    font-size:12.5px;color:var(--paper);white-space:nowrap}
+  .wx b{font-weight:600}
+  .wx .feels{color:var(--muted)}
+  .shelter{display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+    padding:12px 16px;background:rgba(79,163,217,.12);
+    border-bottom:1px solid var(--rail);font-size:13.5px;line-height:1.45}
+  .shelter.hot{background:rgba(245,166,35,.13)}
+  .shelter.cold{background:rgba(79,163,217,.12)}
+  .shelter.wet{background:rgba(142,166,204,.14)}
+  .shelter button{background:transparent;border:1px solid var(--signal);color:var(--signal);
+    border-radius:8px;padding:8px 13px;font:600 12.5px Inter,sans-serif;
+    cursor:pointer;margin-left:auto;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -264,6 +302,17 @@
     <div class="loc" id="locLabel">Finding you…</div>
     <button class="watchToggle" id="watchBtn" aria-pressed="true">Alerts on</button>
   </header>
+
+  <div class="livebar" id="liveBar">
+    <span class="pulse" id="pulse"></span>
+    <span id="liveTxt">Connecting…</span>
+    <span class="wx" id="wx" hidden></span>
+  </div>
+
+  <div class="shelter" id="shelter" hidden>
+    <span id="shelterTxt"></span>
+    <button type="button" id="shelterBtn">Find somewhere indoors</button>
+  </div>
 
   <div class="alert" id="alertBar" role="status" aria-live="polite">
     <span class="g">🚨</span>
@@ -288,6 +337,7 @@
     <section class="view on" id="v-map">
       <div id="map"></div>
       <button type="button" class="maptog" id="dpdBtn" aria-pressed="false">Reported incidents</button>
+      <button type="button" class="maptog t2" id="busBtn" aria-pressed="false">Live buses</button>
       <p class="mapsrc" id="dpdSrc" hidden>Detroit Police Department records, past 90 days. Counts only — not a rating of any area.</p>
     </section>
 
@@ -529,6 +579,7 @@ async function loadReports(){
   if(error){ toast('Could not load reports'); console.error(error); return; }
   drawPins(data || []);
   renderList(data || []);
+  if(typeof markSynced === 'function') markSynced(false);
 }
 
 async function loadScore(){
@@ -733,15 +784,46 @@ function afterFix(label){
   document.getElementById('pinNote').textContent = haveFix
     ? 'Pinned to your current location. No account, no name attached. TransitWatch is not an emergency service — call 911 for anything urgent.'
     : 'Location is off, so this pins to downtown Detroit. Turn location on for accurate reports.';
-  loadReports(); loadScore();
+  loadReports(); loadScore(); loadWeather();
 }
 
 /* ---------------- live updates ---------------- */
+let lastSync = 0, liveOk = false;
+
+function markSynced(flash){
+  lastSync = Date.now();
+  liveOk = true;
+  if(flash){
+    const bar = document.getElementById('liveBar');
+    bar.classList.add('flash');
+    setTimeout(() => bar.classList.remove('flash'), 1800);
+  }
+  paintLive();
+}
+
+function paintLive(){
+  const txt = document.getElementById('liveTxt');
+  const dot = document.getElementById('pulse');
+  if(!txt) return;
+  if(!liveOk){ txt.textContent = 'Connecting…'; dot.classList.add('off'); return; }
+  dot.classList.remove('off');
+  const s = Math.round((Date.now() - lastSync) / 1000);
+  const when = s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s/60) + 'm ago';
+  txt.textContent = 'Live · updated ' + when;
+}
+setInterval(paintLive, 5000);
+
+/* one subscription drives every view */
 db.channel('reports-live')
-  .on('postgres_changes', { event:'INSERT', schema:'public', table:'reports' }, payload => {
-    const r = payload.new;
+  .on('postgres_changes', { event:'*', schema:'public', table:'reports' }, payload => {
+    const r = payload.new || payload.old;
+
     loadReports(); loadScore();
-    if(!r || !haveFix) return;
+    routeRows = null;                       // route scores are now stale
+    if(document.getElementById('v-routes').classList.contains('on')) loadRoutes();
+    markSynced(payload.eventType === 'INSERT');
+
+    if(payload.eventType !== 'INSERT' || !r || !haveFix) return;
     const d = metresBetween(pos, { lat:r.lat, lng:r.lng });
     if(d > NEARBY_METRES) return;
     const how = d < 1000 ? Math.round(d / 10) * 10 + ' m' : (d/1000).toFixed(1) + ' km';
@@ -751,7 +833,17 @@ db.channel('reports-live')
       'new:' + r.id
     );
   })
-  .subscribe();
+  .on('postgres_changes', { event:'INSERT', schema:'public', table:'report_confirmations' }, () => {
+    loadReports(); routeRows = null;
+    if(document.getElementById('v-routes').classList.contains('on')) loadRoutes();
+    markSynced(false);
+  })
+  .subscribe(status => {
+    if(status === 'SUBSCRIBED') markSynced(false);
+    if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+      liveOk = false; paintLive();
+    }
+  });
 
 /* ---------------- boot ---------------- */
 const wb = document.getElementById('watchBtn');
@@ -1286,6 +1378,201 @@ document.getElementById('routeList').addEventListener('click', e => {
   if(e.target.closest('#rtBack')){ routeView = null; loadRoutes(); return; }
   const card = e.target.closest('[data-route]');
   if(card){ routeView = card.dataset.route; loadRouteDetail(routeView); }
+});
+
+
+/* ================= Live buses (GTFS-Realtime, proxied) =================
+   Agency vehicle positions via the tw-live edge function. SMART runs a
+   BusTime system; DDOT has no documented public realtime feed, so the
+   function probes known endpoints and uses whichever answers. */
+
+const LIVE_URL = SUPABASE_URL + '/functions/v1/tw-live';
+let busOn = false, busLayer = null, busTimer = null, busMarks = new Map();
+
+async function fetchBuses(){
+  const r = await fetch(LIVE_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + SUPABASE_KEY },
+    body: JSON.stringify({ action:'vehicles' })
+  });
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+
+function drawBuses(list){
+  if(!busLayer) busLayer = L.layerGroup().addTo(map);
+  const live = new Set();
+
+  list.forEach(v => {
+    live.add(v.id);
+    const pos0 = [v.lat, v.lng];
+    const label = (v.route || '').toString().slice(0, 4) || 'BUS';
+    const existing = busMarks.get(v.id);
+
+    if(existing){
+      existing.setLatLng(pos0);          // slides to the new position
+      return;
+    }
+    const m = L.marker(pos0, { icon: L.divIcon({
+      className:'',
+      html:`<div class="bus">${escapeHtml(label)}</div>`,
+      iconSize:[26,26], iconAnchor:[13,13]
+    })}).addTo(busLayer);
+    m.bindPopup(`<b>Route ${escapeHtml(String(v.route || '—'))}</b><br>
+      <small style="color:#8EA6CC">Vehicle ${escapeHtml(String(v.id))}${
+        v.speed != null ? ' · ' + Math.round(v.speed * 2.237) + ' mph' : ''}</small>`);
+    busMarks.set(v.id, m);
+  });
+
+  // drop vehicles that left the feed
+  busMarks.forEach((m, id) => {
+    if(!live.has(id)){ busLayer.removeLayer(m); busMarks.delete(id); }
+  });
+}
+
+async function refreshBuses(quiet){
+  const btn = document.getElementById('busBtn');
+  try{
+    const d = await fetchBuses();
+    if(!d.count){
+      if(!quiet) toast('No live bus data available right now');
+      btn.textContent = 'Buses offline';
+      return false;
+    }
+    drawBuses(d.vehicles);
+    btn.textContent = `Live buses (${d.count})`;
+    return true;
+  }catch(e){
+    console.warn('buses', e);
+    if(!quiet) toast('Could not reach the live bus feed');
+    btn.textContent = 'Buses offline';
+    return false;
+  }
+}
+
+async function toggleBuses(){
+  const btn = document.getElementById('busBtn');
+
+  if(busOn){
+    busOn = false;
+    clearInterval(busTimer); busTimer = null;
+    if(busLayer) busLayer.clearLayers();
+    busMarks.clear();
+    btn.setAttribute('aria-pressed','false');
+    btn.textContent = 'Live buses';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Loading…';
+  const ok = await refreshBuses(false);
+  btn.disabled = false;
+
+  if(!ok){ btn.setAttribute('aria-pressed','false'); return; }
+  busOn = true;
+  btn.setAttribute('aria-pressed','true');
+  busTimer = setInterval(() => refreshBuses(true), 15000);
+}
+
+document.getElementById('busBtn').addEventListener('click', toggleBuses);
+
+/* stop polling the agency feed while the app is in the background */
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){ clearInterval(busTimer); busTimer = null; }
+  else if(busOn && !busTimer){
+    refreshBuses(true);
+    busTimer = setInterval(() => refreshBuses(true), 15000);
+  }
+});
+
+
+/* ================= Weather =================
+   Open-Meteo: free, keyless, no account. Used for one decision only —
+   is it rough to stand outside at this stop right now, and if so,
+   where is the nearest indoor place. */
+
+const WMO = {
+  0:['Clear','☀️'], 1:['Mostly clear','🌤'], 2:['Partly cloudy','⛅'], 3:['Overcast','☁️'],
+  45:['Fog','🌫'], 48:['Freezing fog','🌫'],
+  51:['Light drizzle','🌦'], 53:['Drizzle','🌦'], 55:['Heavy drizzle','🌦'],
+  56:['Freezing drizzle','🌧'], 57:['Freezing drizzle','🌧'],
+  61:['Light rain','🌧'], 63:['Rain','🌧'], 65:['Heavy rain','🌧'],
+  66:['Freezing rain','🌧'], 67:['Freezing rain','🌧'],
+  71:['Light snow','🌨'], 73:['Snow','🌨'], 75:['Heavy snow','🌨'], 77:['Snow grains','🌨'],
+  80:['Rain showers','🌦'], 81:['Rain showers','🌧'], 82:['Heavy showers','🌧'],
+  85:['Snow showers','🌨'], 86:['Heavy snow showers','🌨'],
+  95:['Thunderstorm','⛈'], 96:['Thunderstorm','⛈'], 99:['Thunderstorm','⛈'],
+};
+
+let wxAt = 0, wxKey = null;
+
+async function loadWeather(){
+  if(!pos) return;
+  const key = pos.lat.toFixed(2) + ',' + pos.lng.toFixed(2);
+  if(key === wxKey && Date.now() - wxAt < 900000) return;   // 15 min
+
+  try{
+    const u = 'https://api.open-meteo.com/v1/forecast'
+      + `?latitude=${pos.lat}&longitude=${pos.lng}`
+      + '&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m'
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto';
+    const r = await fetch(u);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const c = d.current;
+    if(!c) throw new Error('no current block');
+
+    wxKey = key; wxAt = Date.now();
+    paintWeather({
+      temp:   Math.round(c.temperature_2m),
+      feels:  Math.round(c.apparent_temperature),
+      code:   c.weather_code,
+      wind:   Math.round(c.wind_speed_10m),
+      precip: c.precipitation,
+    });
+  }catch(e){
+    console.warn('weather', e);
+    document.getElementById('wx').hidden = true;
+  }
+}
+
+function paintWeather(w){
+  const [label, icon] = WMO[w.code] || ['', '🌡'];
+  const el = document.getElementById('wx');
+  el.hidden = false;
+  el.innerHTML = `${icon} <b>${w.temp}°</b>`
+    + (Math.abs(w.feels - w.temp) >= 3 ? ` <span class="feels">feels ${w.feels}°</span>` : '')
+    + (label ? ` <span class="feels">· ${escapeHtml(label)}</span>` : '');
+
+  /* is it rough to stand outside right now? */
+  const snow  = w.code >= 71 && w.code <= 77 || w.code === 85 || w.code === 86;
+  const rain  = (w.code >= 51 && w.code <= 67) || (w.code >= 80 && w.code <= 82) || w.code >= 95;
+  const cold  = w.feels <= 32;
+  const chill = w.feels <= 45 && w.wind >= 15;
+  const hot   = w.feels >= 90;
+
+  let msg = null, kind = 'cold';
+  if(cold)       { msg = `Feels like ${w.feels}° — waiting outside is risky for long.`; kind = 'cold'; }
+  else if(hot)   { msg = `Feels like ${w.feels}° — get out of the heat if the wait is long.`; kind = 'hot'; }
+  else if(snow)  { msg = `${label} and ${w.temp}° — shelters may be slick or unusable.`; kind = 'cold'; }
+  else if(rain)  { msg = `${label} — worth knowing which stops near you are covered.`; kind = 'wet'; }
+  else if(chill) { msg = `${w.wind} mph wind, feels like ${w.feels}°.`; kind = 'cold'; }
+
+  const bar = document.getElementById('shelter');
+  if(!msg){ bar.hidden = true; return; }
+  bar.hidden = false;
+  bar.className = 'shelter ' + kind;
+  document.getElementById('shelterTxt').textContent = msg;
+}
+
+/* jump straight to indoor places */
+document.getElementById('shelterBtn').addEventListener('click', () => {
+  resKind = 'indoors';
+  switchView('help');
+  loadResources().then(() => {
+    document.querySelectorAll('#helpFilters .chip').forEach(c =>
+      c.setAttribute('aria-pressed', String(c.dataset.kind === 'indoors')));
+  });
 });
 
 </script>
