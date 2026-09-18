@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TransitWatch Command Center</title>
+<meta name="theme-color" content="#071736">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --ink:#071736; --surface:#0D2A57; --raised:#123A72; --rail:#1E4E8F;
+    --paper:#EDF3FF; --muted:#8EA6CC; --signal:#F5C21B;
+    --safe:#2FD48A; --warn:#F5A623; --alert:#FF5C5C;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--ink);color:var(--paper);
+    font-family:Inter,system-ui,-apple-system,sans-serif}
+
+  header{padding:calc(env(safe-area-inset-top) + 15px) 18px 15px;
+    background:var(--surface);border-bottom:1px solid var(--rail);
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .brand{font-family:'Archivo Narrow',sans-serif;font-size:19px;font-weight:700;
+    letter-spacing:.03em;margin:0}
+  .brand span{color:var(--signal)}
+  .sub{font-size:12px;color:var(--muted);margin:2px 0 0;width:100%}
+  .range{margin-left:auto;display:flex;gap:6px}
+  .range button{background:transparent;border:1px solid var(--rail);color:var(--muted);
+    border-radius:8px;padding:6px 11px;font:600 12.5px Inter,sans-serif;cursor:pointer}
+  .range button[aria-pressed="true"]{border-color:var(--signal);color:var(--signal)}
+
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rail)}
+  .kpi{background:var(--ink);padding:15px 14px}
+  .kpi b{display:block;font-family:'Archivo Narrow',sans-serif;font-size:31px;
+    font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .kpi span{display:block;font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.3}
+  .kpi.danger b{color:var(--alert)}
+  .kpi.open b{color:var(--signal)}
+  .kpi.done b{color:var(--safe)}
+
+  section{border-bottom:1px solid var(--rail)}
+  .sec-h{display:flex;align-items:center;justify-content:space-between;
+    padding:15px 18px 0;gap:12px}
+  h2{font-family:'Archivo Narrow',sans-serif;font-size:12px;font-weight:700;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--signal);margin:0}
+  .btn{background:transparent;border:1px solid var(--signal);color:var(--signal);
+    border-radius:8px;padding:7px 13px;font:600 12.5px Inter,sans-serif;cursor:pointer}
+  .btn:disabled{opacity:.5}
+
+  #map{height:300px;margin-top:13px;background:var(--surface)}
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) saturate(.75) brightness(.92) contrast(1.05)}
+  .cluster{display:flex;align-items:center;justify-content:center;border-radius:50%;
+    font:700 13px Inter,sans-serif;color:#08152B;border:2px solid rgba(255,255,255,.8)}
+
+  .trend{display:flex;align-items:flex-end;gap:3px;height:92px;padding:16px 18px 10px}
+  .trend div{flex:1;background:var(--rail);border-radius:2px 2px 0 0;min-height:2px;position:relative}
+  .trend div.has{background:var(--signal)}
+  .trend div.dang{background:var(--alert)}
+  .trend-x{display:flex;justify-content:space-between;padding:0 18px 15px;
+    font-size:11px;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th{text-align:left;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);font-weight:600;padding:8px 18px;border-bottom:1px solid var(--rail)}
+  td{padding:12px 18px;border-bottom:1px solid rgba(30,78,143,.5);font-size:14px;vertical-align:top}
+  td.n{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+
+  .rep{padding:14px 18px;border-bottom:1px solid rgba(30,78,143,.5)}
+  .rep-t{display:flex;align-items:center;gap:9px;margin-bottom:5px;flex-wrap:wrap}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .s1{background:var(--signal)} .s2{background:var(--warn)} .s3{background:var(--alert)}
+  .cat{font-weight:600;font-size:14.5px}
+  .ago{font-size:12px;color:var(--muted);margin-left:auto}
+  .where{font-size:13.5px;color:var(--muted);margin:0 0 6px}
+  .desc{font-size:14px;line-height:1.5;margin:0 0 9px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;
+    text-transform:uppercase;padding:3px 8px;border-radius:5px}
+  .p-reported{background:rgba(142,166,204,.2);color:var(--muted)}
+  .p-confirmed{background:rgba(245,194,27,.18);color:var(--signal)}
+  .p-reviewing{background:rgba(79,163,217,.2);color:#7FC0EA}
+  .p-resolved{background:rgba(47,212,138,.16);color:var(--safe)}
+  .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+  .acts button{background:transparent;border:1px solid var(--rail);color:var(--paper);
+    border-radius:7px;padding:6px 11px;font:600 12px Inter,sans-serif;cursor:pointer}
+  .acts button:hover{border-color:var(--signal)}
+
+  pre{margin:13px 18px 17px;white-space:pre-wrap;word-break:break-word;
+    font:14px/1.65 Inter,sans-serif}
+  .empty{padding:36px 18px;text-align:center;color:var(--muted);font-size:14px;line-height:1.6}
+  .foot{padding:16px 18px 30px;font-size:12px;color:var(--muted);line-height:1.6}
+  .foot a{color:var(--signal)}
+  @media (min-width:760px){
+    .grid{display:grid;grid-template-columns:1fr 1fr}
+    .grid section:first-child{border-right:1px solid var(--rail)}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 class="brand">TRANSIT<span>WATCH</span></h1>
+  <div class="range" id="range">
+    <button data-d="7">7d</button>
+    <button data-d="30" aria-pressed="true">30d</button>
+    <button data-d="90">90d</button>
+  </div>
+  <p class="sub">Command Center — rider reports across the network</p>
+</header>
+
+<div class="kpis" id="kpis">
+  <div class="kpi"><b id="kTotal">—</b><span>Reports</span></div>
+  <div class="kpi danger"><b id="kDanger">—</b><span>Marked dangerous</span></div>
+  <div class="kpi open"><b id="kOpen">—</b><span>Unresolved</span></div>
+  <div class="kpi"><b id="kConf">—</b><span>Rider-confirmed</span></div>
+  <div class="kpi done"><b id="kDone">—</b><span>Resolved</span></div>
+  <div class="kpi"><b id="kRiders">—</b><span>Reporting riders</span></div>
+</div>
+
+<section>
+  <div class="sec-h"><h2>Incident map</h2></div>
+  <div id="map"></div>
+</section>
+
+<div class="grid">
+  <section>
+    <div class="sec-h"><h2>Daily volume</h2></div>
+    <div class="trend" id="trend"></div>
+    <div class="trend-x"><span id="tFrom"></span><span id="tTo"></span></div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>Most affected locations</h2></div>
+    <table>
+      <thead><tr><th>Route / stop</th><th class="n">Reports</th><th class="n">Danger</th></tr></thead>
+      <tbody id="topRows"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</div>
+
+<section>
+  <div class="sec-h">
+    <h2>Operations briefing</h2>
+    <button class="btn" id="digestBtn">Generate</button>
+  </div>
+  <pre id="digest">Cluster rider reports into actionable work items.</pre>
+</section>
+
+<section>
+  <div class="sec-h"><h2>Report queue</h2></div>
+  <div id="queue"><div class="empty">Loading…</div></div>
+</section>
+
+<p class="foot">
+  TransitWatch is a rider-reporting tool. It is not an emergency service and does not
+  dispatch police, fire or EMS. Statuses reflect review inside this system only —
+  "Resolved" means a reviewer marked it resolved, not that an agency work order was closed.
+  <br><a href="/">← Rider app</a>
+</p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.7/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://cqopycrohvojllarltsv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_VcVKFhjZfPboTs32fF13ag_fz7bs8PR';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const DETROIT = [42.3314, -83.0458];
+
+const LABELS = {
+  harassment:'Harassment', theft:'Theft', assault:'Assault',
+  suspicious_activity:'Suspicious activity', vandalism:'Vandalism',
+  poor_lighting:'No lighting', no_show_bus:'Bus never came',
+  delay:'Long delay', other:'Something else'
+};
+const FLOW = { reported:'confirmed', confirmed:'reviewing', reviewing:'resolved' };
+const NEXT_LABEL = { reported:'Mark confirmed', confirmed:'Start review', reviewing:'Mark resolved' };
+
+let days = 30, map, layer;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s??'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+function ago(ts){
+  const m = Math.floor((Date.now()-new Date(ts))/60000);
+  if(m<60) return m+'m ago';
+  const h = Math.floor(m/60);
+  if(h<24) return h+'h ago';
+  return Math.floor(h/24)+'d ago';
+}
+
+/* ---------- map ---------- */
+function initMap(){
+  map = L.map('map',{zoomControl:false,attributionControl:false}).setView(DETROIT,11);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  L.control.attribution({prefix:false}).addAttribution('© OpenStreetMap').addTo(map);
+  layer = L.layerGroup().addTo(map);
+}
+
+/* grid-cluster so dense corridors read as one weighted dot */
+function drawClusters(rows){
+  layer.clearLayers();
+  if(!rows.length) return;
+
+  const cells = new Map();
+  rows.forEach(r => {
+    const k = r.lat.toFixed(2)+','+r.lng.toFixed(2);
+    const c = cells.get(k) || { lat:0, lng:0, n:0, danger:0 };
+    c.lat += r.lat; c.lng += r.lng; c.n++;
+    if(r.severity === 3) c.danger++;
+    cells.set(k, c);
+  });
+
+  const pts = [];
+  cells.forEach(c => {
+    const lat = c.lat/c.n, lng = c.lng/c.n;
+    const size = Math.min(26 + c.n*5, 54);
+    const bg = c.danger ? '#FF5C5C' : '#F5C21B';
+    L.marker([lat,lng], { icon: L.divIcon({
+      className:'',
+      html:`<div class="cluster" style="width:${size}px;height:${size}px;background:${bg}">${c.n}</div>`,
+      iconSize:[size,size], iconAnchor:[size/2,size/2]
+    })}).addTo(layer).bindPopup(
+      `<b>${c.n} report${c.n>1?'s':''}</b>${c.danger?`<br>${c.danger} marked dangerous`:''}`
+    );
+    pts.push([lat,lng]);
+  });
+
+  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom:14 });
+}
+
+/* ---------- loaders ---------- */
+async function loadStats(){
+  const { data } = await db.rpc('command_stats', { days });
+  const s = data?.[0] || {};
+  $('kTotal').textContent  = s.total     ?? 0;
+  $('kDanger').textContent = s.dangerous ?? 0;
+  $('kOpen').textContent   = s.unresolved?? 0;
+  $('kConf').textContent   = s.confirmed ?? 0;
+  $('kDone').textContent   = s.resolved  ?? 0;
+  $('kRiders').textContent = s.riders    ?? 0;
+}
+
+async function loadTrend(){
+  const { data } = await db.rpc('daily_counts', { days: Math.min(days,30) });
+  const rows = data || [];
+  const max = Math.max(1, ...rows.map(r => Number(r.reports)));
+  $('trend').innerHTML = rows.map(r => {
+    const n = Number(r.reports), d = Number(r.dangerous);
+    const h = n ? Math.max(4, Math.round(n/max*100)) : 2;
+    const cls = d ? 'dang' : n ? 'has' : '';
+    return `<div class="${cls}" style="height:${h}%" title="${r.day}: ${n} report${n===1?'':'s'}"></div>`;
+  }).join('');
+  if(rows.length){
+    const f = new Date(rows[0].day), t = new Date(rows[rows.length-1].day);
+    const fmt = d => d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    $('tFrom').textContent = fmt(f); $('tTo').textContent = fmt(t);
+  }
+}
+
+async function loadTop(){
+  const { data } = await db.rpc('top_locations', { days, lim: 8 });
+  const rows = data || [];
+  $('topRows').innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td>${esc(r.place)}</td>
+        <td class="n">${r.reports}</td>
+        <td class="n">${r.dangerous || '—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="3" class="empty">No reports in this window.</td></tr>';
+}
+
+async function loadQueue(){
+  const since = new Date(Date.now() - days*86400000).toISOString();
+  const { data } = await db.from('reports').select('*')
+    .gte('created_at', since).order('created_at',{ascending:false}).limit(120);
+  const rows = data || [];
+
+  drawClusters(rows);
+
+  $('queue').innerHTML = rows.length ? rows.map(r => {
+    const place = [r.route, r.stop_name].filter(Boolean).join(' · ') || 'Unlabelled location';
+    const next = FLOW[r.status];
+    return `<div class="rep">
+      <div class="rep-t">
+        <span class="dot s${r.severity}"></span>
+        <span class="cat">${LABELS[r.category] || r.category}</span>
+        <span class="pill p-${r.status}">${r.status}</span>
+        <span class="ago">${ago(r.created_at)}</span>
+      </div>
+      <p class="where">${esc(place)}${r.confirm_count ? ` — ${r.confirm_count} rider confirmation${r.confirm_count>1?'s':''}` : ''}</p>
+      ${r.description ? `<p class="desc">${esc(r.description)}</p>` : ''}
+      <div class="acts">
+        ${next ? `<button data-id="${r.id}" data-to="${next}">${NEXT_LABEL[r.status]}</button>` : ''}
+        ${r.status !== 'resolved' ? `<button data-id="${r.id}" data-to="resolved">Resolve</button>` : ''}
+        ${r.status === 'resolved' ? `<button data-id="${r.id}" data-to="reported">Reopen</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">No reports yet.<br>Reports posted in the rider app land here.</div>';
+}
+
+$('queue').addEventListener('click', async e => {
+  const b = e.target.closest('[data-to]'); if(!b) return;
+  b.disabled = true;
+  const { error } = await db.from('reports')
+    .update({ status: b.dataset.to, status_changed_at: new Date().toISOString() })
+    .eq('id', b.dataset.id);
+  if(error){ console.error(error); b.disabled = false; alert('Could not update — check write permissions.'); return; }
+  refresh();
+});
+
+/* ---------- AI briefing ---------- */
+$('digestBtn').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = 'Working…';
+  $('digest').textContent = 'Clustering reports…';
+  try{
+    const r = await fetch(SUPABASE_URL + '/functions/v1/tw-ai', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + SUPABASE_KEY },
+      body: JSON.stringify({ action:'digest', days })
+    });
+    const d = await r.json();
+    if(!r.ok || d.error) throw new Error(d.error || r.status);
+    $('digest').textContent = d.text;
+    btn.textContent = 'Regenerate';
+  }catch(err){
+    console.error(err);
+    $('digest').textContent = 'Could not generate the briefing.';
+    btn.textContent = 'Generate';
+  }
+  btn.disabled = false;
+});
+
+/* ---------- range + boot ---------- */
+$('range').addEventListener('click', e => {
+  const b = e.target.closest('[data-d]'); if(!b) return;
+  [...$('range').children].forEach(x => x.setAttribute('aria-pressed', String(x===b)));
+  days = Number(b.dataset.d);
+  refresh();
+});
+
+function refresh(){ loadStats(); loadTrend(); loadTop(); loadQueue(); }
+
+db.channel('cc-live')
+  .on('postgres_changes',{event:'*',schema:'public',table:'reports'}, refresh)
+  .subscribe();
+
+initMap();
+refresh();
+</script>
+</body>
+</html>

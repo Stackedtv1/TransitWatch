@@ -194,6 +194,14 @@
     letter-spacing:.06em;color:var(--safe);text-transform:uppercase;vertical-align:1px}
   .res a{color:var(--paper);text-decoration:none}
   .res a:active{opacity:.6}
+
+  /* ---- emergency distinction ---- */
+  .emerg{margin-top:12px;padding:13px 14px;border-radius:11px;
+    background:rgba(255,92,92,.11);border:1px solid var(--alert)}
+  .emerg strong{display:block;font-size:14.5px;color:var(--alert);margin-bottom:4px}
+  .emerg span{display:block;font-size:13px;line-height:1.5;color:var(--paper)}
+  .call911{display:inline-block;margin-top:10px;background:var(--alert);color:#fff;
+    text-decoration:none;border-radius:9px;padding:10px 18px;font-weight:700;font-size:14px}
 </style>
 </head>
 <body>
@@ -260,6 +268,11 @@
             <button type="button" class="chip" data-sev="2" aria-pressed="true">Concerning</button>
             <button type="button" class="chip" data-sev="3">Dangerous</button>
           </div>
+          <div class="emerg" id="emerg" hidden>
+            <strong>In danger right now? Call 911.</strong>
+            <span>TransitWatch does not contact police or emergency services. Reports here go to other riders and to the transit agency.</span>
+            <a class="call911" href="tel:911">Call 911</a>
+          </div>
         </fieldset>
 
         <label class="f">Add detail
@@ -274,9 +287,11 @@
             <input type="text" id="stop" placeholder="Gratiot & 8 Mile" maxlength="80">
           </label>
         </div>
+        <button type="button" class="ai-btn" id="stopBtn">Use the stop I'm standing at</button>
+        <p class="ai-note" id="stopNote" hidden></p>
 
         <button type="submit" class="submit" id="submitBtn">Post report</button>
-        <p class="note" id="pinNote">Pinned to your current location. No account, no name attached.</p>
+        <p class="note" id="pinNote">Pinned to your current location. No account, no name attached. TransitWatch is not an emergency service — call 911 for anything urgent.</p>
       </form>
     </section>
     <section class="view" id="v-help">
@@ -552,11 +567,15 @@ document.getElementById('catChips').addEventListener('click', e => {
   b.setAttribute('aria-pressed','true');
   selectedCat = b.dataset.cat;
 });
+function syncEmerg(){
+  document.getElementById('emerg').hidden = selectedSev !== 3;
+}
 document.getElementById('sevChips').addEventListener('click', e => {
   const b = e.target.closest('[data-sev]'); if(!b) return;
   document.querySelectorAll('#sevChips .chip').forEach(c => c.setAttribute('aria-pressed','false'));
   b.setAttribute('aria-pressed','true');
   selectedSev = Number(b.dataset.sev);
+  syncEmerg();
 });
 
 document.getElementById('reportForm').addEventListener('submit', async e => {
@@ -650,7 +669,7 @@ document.addEventListener('visibilitychange', () => {
 function afterFix(label){
   document.getElementById('locLabel').textContent = label;
   document.getElementById('pinNote').textContent = haveFix
-    ? 'Pinned to your current location. No account, no name attached.'
+    ? 'Pinned to your current location. No account, no name attached. TransitWatch is not an emergency service — call 911 for anything urgent.'
     : 'Location is off, so this pins to downtown Detroit. Turn location on for accurate reports.';
   loadReports(); loadScore();
 }
@@ -754,6 +773,7 @@ document.getElementById('plainBtn').addEventListener('click', async e => {
     document.querySelectorAll('#sevChips .chip').forEach(c =>
       c.setAttribute('aria-pressed', String(Number(c.dataset.sev) === d.severity)));
     selectedSev = d.severity;
+    syncEmerg();
 
     const desc = document.getElementById('desc');
     if(!desc.value.trim()) desc.value = text;
@@ -945,6 +965,35 @@ document.getElementById('helpFilters').addEventListener('click', e => {
 });
 
 buildResFilters();
+
+
+/* ---- auto-fill nearest stop (Google Places, proxied) ---- */
+document.getElementById('stopBtn').addEventListener('click', async e => {
+  const btn  = e.currentTarget;
+  const note = document.getElementById('stopNote');
+  if(!pos){ toast('Need your location first'); return; }
+
+  btn.disabled = true; btn.textContent = 'Looking…';
+  try{
+    const d = await ai({ action:'place', lat:pos.lat, lng:pos.lng });
+    if(!d.best) throw new Error('nothing found');
+
+    document.getElementById('stop').value = d.best;
+    note.hidden = false;
+    note.style.color = 'var(--safe)';
+    note.textContent = d.stop
+      ? 'Nearest transit stop. Edit it if that is not where you are.'
+      : 'Nearest cross streets — no mapped stop here.';
+    btn.textContent = 'Look again';
+  }catch(err){
+    console.error('place', err);
+    note.hidden = false;
+    note.style.color = 'var(--muted)';
+    note.textContent = 'Could not find a stop here — type it in yourself.';
+    btn.textContent = "Use the stop I'm standing at";
+  }
+  btn.disabled = false;
+});
 
 </script>
 </body>
