@@ -68,7 +68,7 @@
   .view{display:none;height:100%}
   .view.on{display:block}
   #map{height:100%;min-height:320px;background:var(--surface)}
-  .leaflet-tile-pane{filter:hue-rotate(200deg) saturate(1.6) brightness(.92)}
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) saturate(.75) brightness(.92) contrast(1.05)}
 
   /* ---- lists ---- */
   .list{padding:var(--pad);display:flex;flex-direction:column;gap:10px}
@@ -160,6 +160,23 @@
   }
   .toast.on{opacity:1}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+  /* ---- AI surfaces ---- */
+  .brief{padding:0 16px 14px;background:var(--surface);border-bottom:1px solid var(--rail)}
+  .brief-tag{display:inline-block;font-family:'Archivo Narrow',sans-serif;font-size:11px;
+    font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
+  .brief p{margin:5px 0 0;font-size:14.5px;line-height:1.5;color:var(--paper)}
+  .brief.load p{color:var(--muted);font-style:italic}
+  .ai-btn{margin-top:9px;background:transparent;border:1px solid var(--signal);
+    color:var(--signal);border-radius:9px;padding:10px 15px;font:600 13.5px Inter,sans-serif;
+    cursor:pointer;width:100%}
+  .ai-btn.sm{width:auto;margin:0;padding:7px 13px;font-size:12.5px}
+  .ai-btn:disabled{opacity:.5;cursor:default}
+  .ai-note{margin:8px 0 0;font-size:13px;color:var(--safe);line-height:1.45}
+  .digest{padding:14px 16px;border-bottom:1px solid var(--rail)}
+  .digest-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .digest pre{margin:11px 0 0;white-space:pre-wrap;word-break:break-word;
+    font:14px/1.6 Inter,sans-serif;color:var(--paper)}
 </style>
 </head>
 <body>
@@ -184,10 +201,22 @@
     </div>
   </div>
 
+  <div class="brief" id="brief" hidden>
+    <span class="brief-tag">What riders are reporting</span>
+    <p id="briefText"></p>
+  </div>
+
   <main>
     <section class="view on" id="v-map"><div id="map"></div></section>
 
     <section class="view" id="v-near">
+      <div class="digest">
+        <div class="digest-head">
+          <span class="brief-tag">Agency briefing</span>
+          <button type="button" class="ai-btn sm" id="digestBtn">Generate</button>
+        </div>
+        <pre id="digestText" hidden></pre>
+      </div>
       <div class="list" id="nearList">
         <div class="empty">Loading reports…</div>
       </div>
@@ -195,6 +224,13 @@
 
     <section class="view" id="v-report">
       <form id="reportForm">
+        <fieldset>
+          <legend>Describe it in your own words</legend>
+          <textarea id="plain" maxlength="400" placeholder="Couple guys were arguing by the shelter and the light's been out all week."></textarea>
+          <button type="button" class="ai-btn" id="plainBtn">Fill this in for me</button>
+          <p class="ai-note" id="plainNote" hidden></p>
+        </fieldset>
+
         <fieldset>
           <legend>What happened?</legend>
           <div class="chips" id="catChips"></div>
@@ -351,8 +387,8 @@ document.getElementById('watchBtn').addEventListener('click', () => {
 function initMap(){
   map = L.map('map', { zoomControl:false, attributionControl:true })
          .setView([pos.lat, pos.lng], 14);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution:'© OpenStreetMap, © CARTO', maxZoom:19
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'© OpenStreetMap contributors', maxZoom:19
   }).addTo(map);
   L.control.zoom({ position:'bottomleft' }).addTo(map);
   layer = L.layerGroup().addTo(map);
@@ -409,6 +445,10 @@ async function loadScore(){
     report_count === 0
       ? 'Nothing reported within a half kilometre in the last 30 days'
       : `${report_count} report${report_count === 1 ? '' : 's'} within a half kilometre this month`;
+
+  /* AI briefing — only worth running when there is something to summarise */
+  if(report_count > 0) loadBrief(pos.lat, pos.lng);
+  else { document.getElementById('brief').hidden = true; briefKey = null; }
 
   /* warn on entering a rough stretch */
   if(!haveFix) return;
@@ -615,6 +655,101 @@ wb.textContent = watchOn ? 'Alerts on' : 'Alerts off';
 buildChips();
 initMap();
 locate();
+
+/* ================= AI (tw-ai edge function) ================= */
+const AI_URL = SUPABASE_URL + '/functions/v1/tw-ai';
+
+async function ai(payload){
+  const r = await fetch(AI_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + SUPABASE_KEY },
+    body: JSON.stringify(payload)
+  });
+  const data = await r.json();
+  if(!r.ok || data.error) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+
+/* 1. stop briefing under the score */
+let briefKey = null;
+async function loadBrief(lat, lng){
+  const key = lat.toFixed(3) + ',' + lng.toFixed(3);
+  if(key === briefKey) return;
+  briefKey = key;
+
+  const box = document.getElementById('brief');
+  const txt = document.getElementById('briefText');
+  box.hidden = false; box.classList.add('load');
+  txt.textContent = 'Reading recent reports…';
+
+  try{
+    const d = await ai({ action:'brief', lat, lng });
+    box.classList.remove('load');
+    txt.textContent = d.text;
+  }catch(e){
+    console.error('brief', e);
+    box.hidden = true;
+    briefKey = null;
+  }
+}
+
+/* 2. agency digest */
+document.getElementById('digestBtn').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  const out = document.getElementById('digestText');
+  btn.disabled = true; btn.textContent = 'Working…';
+  out.hidden = false; out.textContent = 'Clustering reports…';
+  try{
+    const d = await ai({ action:'digest', days:30 });
+    out.textContent = d.text;
+    btn.textContent = 'Regenerate';
+  }catch(err){
+    console.error('digest', err);
+    out.textContent = 'Could not generate the briefing. Try again.';
+    btn.textContent = 'Generate';
+  }
+  btn.disabled = false;
+});
+
+/* 3. plain-language intake */
+document.getElementById('plainBtn').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  const text = document.getElementById('plain').value.trim();
+  const note = document.getElementById('plainNote');
+  if(text.length < 3){ toast('Describe what happened first'); return; }
+
+  btn.disabled = true; btn.textContent = 'Reading…';
+  try{
+    const d = await ai({ action:'classify', text });
+
+    document.querySelectorAll('#catChips .chip').forEach(c =>
+      c.setAttribute('aria-pressed', String(c.dataset.cat === d.category)));
+    selectedCat = d.category;
+
+    document.querySelectorAll('#sevChips .chip').forEach(c =>
+      c.setAttribute('aria-pressed', String(Number(c.dataset.sev) === d.severity)));
+    selectedSev = d.severity;
+
+    const desc = document.getElementById('desc');
+    if(!desc.value.trim()) desc.value = text;
+
+    const cat = CATEGORIES.find(c => c.id === d.category);
+    const sevWord = ['', 'Minor', 'Concerning', 'Dangerous'][d.severity];
+    note.style.color = 'var(--safe)';
+    note.hidden = false;
+    note.textContent = 'Set to ' + (cat ? cat.label : d.category) +
+      ', ' + sevWord + '. Change anything that looks wrong.';
+    btn.textContent = 'Read it again';
+  }catch(err){
+    console.error('classify', err);
+    note.hidden = false;
+    note.style.color = 'var(--alert)';
+    note.textContent = 'Could not read that — pick the category yourself below.';
+    btn.textContent = 'Fill this in for me';
+  }
+  btn.disabled = false;
+});
+
 </script>
 </body>
 </html>
