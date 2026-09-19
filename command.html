@@ -151,6 +151,37 @@
   .drow-c{font-weight:600;font-size:14px;text-transform:capitalize}
   .drow-a{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
   .drow-w{font-size:13px;color:var(--muted);margin:3px 0 0}
+  /* live service */
+  .ls-k{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rail);margin-top:13px}
+  .ls-k div{background:var(--ink);padding:13px 12px}
+  .ls-k b{display:block;font-family:'Archivo Narrow',sans-serif;font-size:27px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .ls-k span{display:block;font-size:11px;color:var(--muted);margin-top:5px;line-height:1.3}
+  .ls-ag{padding:10px 18px 0;margin:0;font-size:12.5px;color:var(--muted);line-height:1.6}
+  .ls-ag b{color:var(--paper)}
+  .ls-h3{margin:0;padding:16px 18px 6px;font-size:13px;font-weight:700;color:var(--paper)}
+  .ls-row{display:flex;align-items:center;gap:12px;padding:10px 18px;border-top:1px solid rgba(30,78,143,.5);cursor:pointer}
+  .ls-row:hover{background:rgba(18,58,114,.35)}
+  .ls-row .ri-s b{font-size:19px}
+  .ls-al{padding:10px 18px;border-top:1px solid rgba(30,78,143,.5);font-size:13px;line-height:1.5}
+  .ls-al b{display:block;font-size:13.5px}
+  .ls-al span{color:var(--muted)}
+  .ls-tbl td,.ls-tbl th{padding:9px 10px}
+  .ls-tbl td:first-child,.ls-tbl th:first-child{padding-left:18px}
+  .ls-tbl tr{cursor:pointer}
+  .ls-wrap{overflow-x:auto}
+  .ls-tbl td:first-child b{white-space:nowrap}
+  @media (max-width:520px){
+    .ls-tbl td,.ls-tbl th{padding:8px 5px;font-size:13px}
+    .ls-tbl th{font-size:9.5px;letter-spacing:.02em}
+    .ls-tbl td:first-child,.ls-tbl th:first-child{padding-left:14px}
+    .ls-tbl td:last-child,.ls-tbl th:last-child{padding-right:14px}
+    .ls-k b{font-size:24px}
+  }
+  .bus-m{display:flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 4px;border-radius:6px;
+    font:700 11px Inter,sans-serif;color:#fff;border:2px solid rgba(255,255,255,.85)}
+  .layers{flex-wrap:wrap;justify-content:flex-end}
+  .layers button[aria-pressed="true"][data-l="buses"]{border-color:var(--alert);color:var(--alert)}
+  .lg-b{background:var(--alert);border-radius:3px!important;margin-left:10px}
   .dnote{padding:14px 18px 18px;margin:0;font-size:12px;color:var(--muted);line-height:1.55}
   .derr{padding:16px 18px;color:var(--warn);font-size:13px;line-height:1.5}
   th.n{text-align:right}
@@ -231,16 +262,26 @@
   <span id="liveTxt">Connecting…</span>
 </div>
 
+<section id="lsSec">
+  <div class="sec-h">
+    <h2>Live service</h2>
+    <span class="src" id="lsAt">connecting…</span>
+  </div>
+  <div id="lsBody"><div class="empty">Loading live buses…</div></div>
+  <p class="dnote">From DDOT's and SMART's own live bus feeds, refreshed every 30 seconds. On time means no more than 1 min early or 5 min late against the agency's published timetable. "Not moving" is flagged by TransitWatch when a bus sits in one spot 10+ minutes while its agency's system says it's due at the next stop; buses at transit centers or on scheduled layovers are never flagged. It's a possible breakdown or hold-up, not a confirmed one.</p>
+</section>
+
 <section>
   <div class="sec-h">
     <h2>Incident map</h2>
     <div class="layers" id="layers">
       <button data-l="riders" aria-pressed="true">Rider reports</button>
       <button data-l="dpd" aria-pressed="true">Police incidents</button>
+      <button data-l="buses" aria-pressed="true">Late &amp; stuck buses</button>
     </div>
   </div>
   <div id="map"></div>
-  <p class="legend"><i class="lg-r"></i>Rider reports <i class="lg-d"></i>Police-reported incidents (DPD)</p>
+  <p class="legend"><i class="lg-r"></i>Rider reports <i class="lg-d"></i>Police-reported incidents (DPD) <i class="lg-b"></i>Buses not moving or 5+ min late</p>
 </section>
 
 <section id="riSec">
@@ -693,6 +734,9 @@ $('layers').addEventListener('click', e => {
   if(b.dataset.l === 'riders'){
     showRiders = on;
     on ? layer.addTo(map) : map.removeLayer(layer);
+  }else if(b.dataset.l === 'buses'){
+    showBuses = on;
+    if(lsLayer) on ? lsLayer.addTo(map) : map.removeLayer(lsLayer);
   }else{
     showDPD = on;
     if(dpdLayer) on ? dpdLayer.addTo(map) : map.removeLayer(dpdLayer);
@@ -888,6 +932,134 @@ $('riSec').addEventListener('click', async e => {
   if(row) openRoute(row.dataset.route);
 });
 
+/* ================= Live service =================
+   The whole network right now, from DDOT's and SMART's live feeds via tw-live:
+   buses not moving, the latest buses, trips canceled today, detours, and
+   on-time performance by route. Problem buses are drawn on the incident map. */
+
+let lsLayer = null, showBuses = true, lsTimer = null, lsData = null;
+const minsLate = s => Math.max(1, Math.round(s / 60));
+const clockOf = t => new Date(t * 1000).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+
+async function loadLS(){
+  try{
+    const r = await fetch(SUPABASE_URL + '/functions/v1/tw-live?action=summary');
+    const d = await r.json();
+    if(!r.ok || d.error) throw new Error(d.error || ('HTTP ' + r.status));
+    lsData = d;
+    renderLS(d);
+    drawLSBuses(d);
+  }catch(err){
+    console.warn('live service', err);
+    $('lsAt').textContent = 'live feed unavailable';
+    if(!lsData) $('lsBody').innerHTML = '<div class="derr">Live service data is unavailable right now. Retrying every 30 seconds.</div>';
+  }
+}
+
+function busRow(v, i, kind){
+  const right = kind === 'stopped'
+    ? `<b class="b-alert">${v.stopped_min}m</b><span class="b-alert">not moving</span>`
+    : `<b class="b-watch">+${minsLate(v.delay)}m</b><span class="b-watch">late</span>`;
+  return `<div class="ls-row" data-bus="${kind}:${i}">
+    <span class="ri-badge">${esc(v.agency)} ${esc(v.route || '—')}</span>
+    <div class="ri-b">
+      <p class="ri-n">${v.headsign ? 'To ' + esc(v.headsign) : esc(v.route_name || 'In service')}</p>
+      <p class="ri-m">Bus ${esc(v.vid)}${v.next_stop ? ' · ' + (kind === 'stopped' ? 'near ' : 'next: ') + esc(v.next_stop) : ''}${
+        v.route_name ? ' · ' + esc(v.route_name) : ''}</p>
+    </div>
+    <div class="ri-s">${right}</div>
+  </div>`;
+}
+
+const pctCls = p => p == null ? '' : p >= 80 ? 'b-safe' : p >= 65 ? 'b-watch' : 'b-alert';
+
+function renderLS(d){
+  const n = d.now || {};
+  $('lsAt').textContent = 'updated ' + clockOf(d.at);
+  const unrated = Object.entries(d.feeds || {}).filter(([, f]) => !f.on_time_rated).map(([a]) => a);
+  let h = `<div class="ls-k">
+    <div><b>${n.buses ?? 0}</b><span>Buses in service</span></div>
+    <div><b class="${pctCls(n.on_time_pct)}">${n.on_time_pct == null ? '—' : n.on_time_pct + '%'}</b><span>On time now${
+      d.on_time_today != null ? ` · ${d.on_time_today}% today` : ''}</span></div>
+    <div><b class="${n.stopped ? 'b-alert' : ''}">${n.stopped ?? 0}</b><span>Not moving (possible breakdown)</span></div>
+    <div><b class="${d.canceled_today ? 'b-watch' : ''}">${d.canceled_today ?? 0}</b><span>Trips canceled today</span></div>
+  </div>`;
+
+  const ag = Object.entries(d.by_agency || {}).map(([a, c]) =>
+    `<b>${esc(a)}</b> ${c.buses} buses${c.on_time_pct != null ? ` · ${c.on_time_pct}% on time · ${c.late} late` : ''}${
+      c.stopped ? ` · <span class="b-alert">${c.stopped} not moving</span>` : ''}`).join('<br>');
+  h += `<p class="ls-ag">${ag}${unrated.length ? `<br>On time / late is off for ${unrated.map(esc).join(' and ')} until its current timetable is loaded.` : ''}</p>`;
+
+  const stopped = d.stopped || [], late = (d.late || []).slice(0, 8);
+  h += `<h3 class="ls-h3">Needs attention now</h3>`;
+  if(!stopped.length && !late.length) h += '<div class="empty" style="padding:18px">No buses are stuck or running late right now.</div>';
+  h += stopped.map((v, i) => busRow(v, i, 'stopped')).join('');
+  h += late.map((v, i) => busRow(v, i, 'late')).join('');
+
+  const routes = (d.routes || []).filter(r => r.stopped || r.late || r.canceled_today || r.alerts).slice(0, 12);
+  if(routes.length){
+    h += `<h3 class="ls-h3">Routes with service problems</h3><div class="ls-wrap"><table class="ls-tbl"><thead><tr>
+      <th>Route</th><th style="text-align:right">Buses</th><th style="text-align:right">On time</th><th style="text-align:right">Late</th>
+      <th style="text-align:right">Stuck</th><th style="text-align:right">Canceled</th></tr></thead><tbody>` +
+      routes.map(r => `<tr data-lsroute="${esc(r.route_key)}">
+        <td><b>${esc(r.agency)} ${esc(r.route)}</b><br><span class="src">${esc(r.name || '')}${r.alerts ? ` · ${r.alerts} alert${r.alerts > 1 ? 's' : ''}` : ''}</span></td>
+        <td class="n">${r.buses}</td>
+        <td class="n ${pctCls(r.on_time_pct)}">${r.on_time_pct == null ? '—' : r.on_time_pct + '%'}</td>
+        <td class="n ${r.late ? 'b-watch' : ''}">${r.late}${r.late && r.avg_delay_min > 0 ? `<br><span class="src">avg ${r.avg_delay_min}m</span>` : ''}</td>
+        <td class="n ${r.stopped ? 'b-alert' : ''}">${r.stopped}</td>
+        <td class="n ${r.canceled_today ? 'b-watch' : ''}">${r.canceled_today}</td></tr>`).join('') + '</tbody></table></div>';
+  }
+
+  const alerts = d.alerts || [];
+  if(alerts.length){
+    h += `<h3 class="ls-h3">Detours &amp; service alerts (${alerts.length})</h3>` + alerts.map(a => {
+      const rts = (a.route_keys || []).map(k => k.replace(':', ' ')).join(', ');
+      const desc = String(a.description || '');
+      return `<div class="ls-al"><b>${esc(a.header || 'Service alert')}</b><span>${esc(a.agency)}${rts ? ' · ' + esc(rts) : ''}</span>${
+        desc ? `<br>${esc(desc.length > 260 ? desc.slice(0, 257) + '…' : desc)}` : ''}</div>`;
+    }).join('');
+  }
+  $('lsBody').innerHTML = h;
+}
+
+function drawLSBuses(d){
+  if(!map) return;
+  if(!lsLayer) lsLayer = L.layerGroup();
+  lsLayer.clearLayers();
+  const add = (v, color, label) => L.marker([v.lat, v.lng], { zIndexOffset: 800, icon: L.divIcon({ className:'',
+      html:`<div class="bus-m" style="background:${color}">${esc(String(v.route || 'BUS').slice(0, 4))}</div>`, iconSize:[30,22], iconAnchor:[15,11] }) })
+    .addTo(lsLayer).bindPopup(`<b>${esc(v.agency)} ${esc(v.route || '')}</b>${v.headsign ? ' to ' + esc(v.headsign) : ''}<br><b>${label}</b><br>` +
+      `${v.next_stop ? 'Next stop: ' + esc(v.next_stop) + '<br>' : ''}<small>Bus ${esc(v.vid)}</small>`);
+  (d.late || []).forEach(v => add(v, '#D98A0B', `${minsLate(v.delay)} min late`));
+  (d.stopped || []).forEach(v => add(v, '#E03131', `Not moving ${v.stopped_min} min · possible breakdown`));
+  if(showBuses && !map.hasLayer(lsLayer)) lsLayer.addTo(map);
+}
+
+$('lsSec').addEventListener('click', e => {
+  const b = e.target.closest('[data-bus]');
+  if(b && lsData){
+    const [kind, i] = b.dataset.bus.split(':');
+    const v = (kind === 'stopped' ? lsData.stopped : lsData.late)[Number(i)];
+    if(v){
+      map.setView([v.lat, v.lng], 15);
+      L.popup().setLatLng([v.lat, v.lng]).setContent(`<b>${esc(v.agency)} ${esc(v.route || '')} · bus ${esc(v.vid)}</b><br>${
+        kind === 'stopped' ? `Not moving ${v.stopped_min} min` : `${minsLate(v.delay)} min late`}${v.next_stop ? '<br>Next stop: ' + esc(v.next_stop) : ''}`).openOn(map);
+      $('map').scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+    return;
+  }
+  const r = e.target.closest('[data-lsroute]');
+  if(r && riRows.some(x => x.route_key === r.dataset.lsroute)){
+    openRoute(r.dataset.lsroute);
+  }
+});
+
+function startLS(){
+  loadLS();
+  clearInterval(lsTimer);
+  lsTimer = setInterval(() => { if(!document.hidden) loadLS(); }, 30000);
+}
+
 /* ---------- access ---------- */
 async function showApp(){
   document.getElementById('gate').hidden = true;
@@ -897,6 +1069,7 @@ async function showApp(){
   refresh();
   loadDPD();
   loadRI();
+  startLS();
 }
 
 async function signIn(){
