@@ -127,6 +127,69 @@
 
   /* the hidden attribute must always win over display rules */
   [hidden]{display:none !important}
+
+  .layers{display:flex;gap:6px}
+  .layers button{background:transparent;border:1px solid var(--rail);color:var(--muted);
+    border-radius:8px;padding:6px 10px;font:600 12px Inter,sans-serif;cursor:pointer}
+  .layers button[aria-pressed="true"][data-l="riders"]{border-color:var(--signal);color:var(--signal)}
+  .layers button[aria-pressed="true"][data-l="dpd"]{border-color:#B98CFF;color:#B98CFF}
+  .legend{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0;
+    padding:10px 18px 14px;font-size:12px;color:var(--muted)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .lg-r{background:var(--signal);margin-left:0}
+  .lg-d{background:#B98CFF;margin-left:10px}
+  .src{font-size:12px;color:var(--muted)}
+  .dkpis{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rail);margin-top:12px}
+  .dkpi{background:var(--ink);padding:14px}
+  .dkpi b{display:block;font-family:'Archivo Narrow',sans-serif;font-size:27px;font-weight:700;
+    line-height:1.05;color:#B98CFF;font-variant-numeric:tabular-nums;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dkpi b.word{font-size:17px;padding-top:7px;text-transform:capitalize}
+  .dkpi span{display:block;font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.3}
+  .drow{padding:12px 18px;border-bottom:1px solid rgba(30,78,143,.5)}
+  .drow-t{display:flex;gap:10px;align-items:baseline}
+  .drow-c{font-weight:600;font-size:14px;text-transform:capitalize}
+  .drow-a{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+  .drow-w{font-size:13px;color:var(--muted);margin:3px 0 0}
+  .dnote{padding:14px 18px 18px;margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+  .derr{padding:16px 18px;color:var(--warn);font-size:13px;line-height:1.5}
+  th.n{text-align:right}
+
+  /* ---- route intelligence ---- */
+  .ri-tabs{display:flex;gap:6px;padding:12px 18px 0}
+  .ri-tabs button{background:transparent;border:1px solid var(--rail);color:var(--muted);
+    border-radius:8px;padding:7px 12px;font:600 12.5px Inter,sans-serif;cursor:pointer}
+  .ri-tabs button[aria-pressed="true"]{border-color:var(--signal);color:var(--signal)}
+  .ri-row{display:flex;align-items:center;gap:12px;padding:12px 18px;
+    border-bottom:1px solid rgba(30,78,143,.5);cursor:pointer}
+  .ri-row:hover{background:rgba(18,58,114,.35)}
+  .ri-badge{flex:none;min-width:62px;text-align:center;background:var(--raised);color:#fff;border-radius:6px;
+    padding:4px 7px;font:700 12px 'Archivo Narrow',sans-serif;letter-spacing:.03em}
+  .ri-b{flex:1;min-width:0}
+  .ri-n{margin:0;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ri-m{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.4}
+  .ri-s{flex:none;text-align:right}
+  .ri-s b{display:block;font-family:'Archivo Narrow',sans-serif;font-size:22px;line-height:1;font-variant-numeric:tabular-nums}
+  .ri-s span{font-size:11px}
+  .b-safe{color:var(--safe)} .b-watch{color:var(--warn)} .b-alert{color:var(--alert)} .b-none{color:var(--muted)}
+  .ri-flag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;margin-right:4px;
+    background:rgba(255,92,92,.14);color:#FF9A9A;vertical-align:1px}
+  .ri-flag.hub{background:rgba(79,163,217,.18);color:#8CC8F0}
+  .ri-rider{color:var(--alert);font-weight:600}
+  #riDrill{margin:14px 18px 4px;border:1px solid var(--signal);border-radius:12px;overflow:hidden}
+  .dr-h{display:flex;align-items:flex-start;gap:10px;padding:14px;background:rgba(245,194,27,.07)}
+  .dr-t{flex:1;min-width:0}
+  .dr-t h3{margin:6px 0 2px;font-size:18px}
+  .dr-f{margin:4px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .dr-x{background:transparent;border:1px solid var(--rail);color:var(--muted);border-radius:7px;
+    padding:5px 10px;font:600 12px Inter,sans-serif;cursor:pointer}
+  .dr-score{font-family:'Archivo Narrow',sans-serif;font-size:32px;font-weight:700;line-height:1}
+  .dr-score small{font-size:13px;color:var(--muted);margin-left:5px}
+  .dr-stop{display:flex;gap:10px;padding:10px 14px;border-top:1px solid rgba(30,78,143,.5);cursor:pointer}
+  .dr-rank{flex:none;width:22px;height:22px;border-radius:50%;background:var(--warn);color:#2B1A00;
+    display:flex;align-items:center;justify-content:center;font:700 11px Inter,sans-serif}
+  .dr-ai{padding:12px 14px;border-top:1px solid var(--rail)}
+  .dr-ai pre{margin:10px 0 0;white-space:pre-wrap;font:13.5px/1.6 Inter,sans-serif;color:var(--paper)}
 </style>
 </head>
 <body>
@@ -169,8 +232,49 @@
 </div>
 
 <section>
-  <div class="sec-h"><h2>Incident map</h2></div>
+  <div class="sec-h">
+    <h2>Incident map</h2>
+    <div class="layers" id="layers">
+      <button data-l="riders" aria-pressed="true">Rider reports</button>
+      <button data-l="dpd" aria-pressed="true">Police incidents</button>
+    </div>
+  </div>
   <div id="map"></div>
+  <p class="legend"><i class="lg-r"></i>Rider reports <i class="lg-d"></i>Police-reported incidents (DPD)</p>
+</section>
+
+<section id="riSec">
+  <div class="sec-h">
+    <h2>Route intelligence</h2>
+    <span class="src" id="riWin">last 30 days</span>
+  </div>
+  <div id="riDrill" hidden></div>
+  <div class="ri-tabs" id="riTabs">
+    <button data-t="routes" aria-pressed="true">Routes needing attention</button>
+    <button data-t="stops" aria-pressed="false">Problem stops</button>
+  </div>
+  <div id="riRoutes"><div class="empty">Loading routes…</div></div>
+  <div id="riStops" hidden><div class="empty">Loading stops…</div></div>
+  <p class="dnote">Police-reported incidents (City of Detroit open data) within 150 m, about a block, of each stop, plus TransitWatch rider reports. Route scores compare incidents per stop with other routes, and only rider reports can move a route to high concern. Stops within 60 m of each other, such as transit-center bays, are grouped as one location. DDOT publishes shelter and bench inventory; SMART does not. Police data covers Detroit only, so mostly-suburban routes are not scored.</p>
+</section>
+
+<section id="dpdSec">
+  <div class="sec-h">
+    <h2>Police-reported incidents</h2>
+    <span class="src" id="dpdWin">City of Detroit open data</span>
+  </div>
+  <div class="dkpis">
+    <div class="dkpi"><b id="dTotal">—</b><span>Incidents</span></div>
+    <div class="dkpi"><b id="dNight">—</b><span>Between 8pm and 6am</span></div>
+    <div class="dkpi"><b id="dTop">—</b><span>Most common</span></div>
+  </div>
+  <table>
+    <thead><tr><th>Type</th><th class="n">Count</th><th class="n">Share</th></tr></thead>
+    <tbody id="dCats"><tr><td colspan="3" class="empty">Loading…</td></tr></tbody>
+  </table>
+  <div class="sec-h" style="padding-top:18px"><h2>Most recent</h2></div>
+  <div id="dRecent"><div class="empty">Loading…</div></div>
+  <p class="dnote">Source: Detroit Police Department Records Management System, published daily on the City of Detroit open data portal. Filtered to incident types that affect someone waiting at or walking to a stop. Counted separately from rider reports and never added to them.</p>
 </section>
 
 <div class="grid">
@@ -255,9 +359,13 @@ function initMap(){
 }
 
 /* grid-cluster so dense corridors read as one weighted dot */
+let framed = false;
 function drawClusters(rows){
   layer.clearLayers();
-  if(!rows.length) return;
+  if(!rows.length){
+    if(!framed){ map.invalidateSize(); map.setView(DETROIT, 11); framed = true; }
+    return;
+  }
 
   const cells = new Map();
   rows.forEach(r => {
@@ -283,7 +391,7 @@ function drawClusters(rows){
     pts.push([lat,lng]);
   });
 
-  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom:14 });
+  if(pts.length && !framed){ map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom:14 }); framed = true; }
 }
 
 /* ---------- loaders ---------- */
@@ -394,7 +502,10 @@ $('range').addEventListener('click', e => {
   const b = e.target.closest('[data-d]'); if(!b) return;
   [...$('range').children].forEach(x => x.setAttribute('aria-pressed', String(x===b)));
   days = Number(b.dataset.d);
+  framed = false;
   refresh();
+  loadDPD();
+  loadRI();
 });
 
 function refresh(){ loadStats(); loadTrend(); loadTop(); loadQueue().then(() => markSynced(false)); }
@@ -424,6 +535,7 @@ setInterval(paintLive, 5000);
 db.channel('cc-live')
   .on('postgres_changes',{event:'*',schema:'public',table:'reports'}, p => {
     refresh();
+    loadRI();
     markSynced(p.eventType === 'INSERT');
   })
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'report_confirmations'}, () => {
@@ -435,12 +547,356 @@ db.channel('cc-live')
   });
 
 
+
+/* ================= Police-reported incidents (DPD open data) =================
+   City of Detroit RMS Crime Incidents, published daily. Filtered server-side
+   to incident types that affect someone at or walking to a stop, so the
+   2,000-record page limit never silently drops the relevant ones.
+   Kept separate from rider reports: never merged into rider counts. */
+
+const DPD_Q = 'https://services2.arcgis.com/qvkbeam7Wirps6zC/arcgis/rest/services/RMS_Crime_Incidents/FeatureServer/0/query';
+const DPD_CATS = ['ASSAULT','ROBBERY','WEAPON','HOMICIDE','KIDNAP','SEX','LARCENY','STOLEN VEHICLE','CARJACK'];
+const DPD_COLOR = '#B98CFF';
+let dpdLayer = null, showRiders = true, showDPD = true, dpdSeq = 0;
+
+function dpdWhere(d){
+  const since = new Date(Date.now() - d*86400000).toISOString().slice(0,10);
+  return `incident_occurred_at >= TIMESTAMP '${since} 00:00:00' AND (`
+    + DPD_CATS.map(c => `offense_category LIKE '%${c}%'`).join(' OR ') + ')';
+}
+
+async function arc(params){
+  const q = new URLSearchParams({ f:'json', ...params });
+  const r = await fetch(DPD_Q + '?' + q.toString());
+  if(!r.ok) throw new Error('City data service returned HTTP ' + r.status);
+  const d = await r.json();
+  if(d.error) throw new Error((d.error.message || 'query failed') + (d.error.details?.length ? ' — ' + d.error.details.join('; ') : ''));
+  return d;
+}
+
+function tidy(c){ return String(c || 'incident').toLowerCase().replace(/\s*-\s*/g, ' - '); }
+
+async function loadDPD(){
+  const seq = ++dpdSeq;
+  const where = dpdWhere(days);
+  $('dpdWin').textContent = `City of Detroit open data · last ${days} days`;
+
+  try{
+    const [count, cats, recent] = await Promise.all([
+      arc({ where, returnCountOnly:'true' }),
+      arc({ where, groupByFieldsForStatistics:'offense_category',
+            outStatistics: JSON.stringify([{ statisticType:'count', onStatisticField:'ESRI_OID', outStatisticFieldName:'n' }]),
+            orderByFields:'n DESC' }),
+      arc({ where, outFields:'offense_category,nearest_intersection,neighborhood,incident_occurred_at',
+            orderByFields:'incident_occurred_at DESC', resultRecordCount:'12', returnGeometry:'false' }),
+    ]);
+    if(seq !== dpdSeq) return;                 // a newer range was picked
+
+    const total = Number(count.count || 0);
+    $('dTotal').textContent = total.toLocaleString();
+
+    const rows = (cats.features || []).map(f => {
+      const a = f.attributes || {};
+      return { cat: a.offense_category, n: Number(a.n ?? a.N ?? 0) };
+    }).filter(r => r.cat).sort((a,b) => b.n - a.n);
+
+    if(rows.length){
+      $('dTop').textContent = tidy(rows[0].cat);
+      $('dTop').className = 'word';
+      $('dCats').innerHTML = rows.slice(0, 8).map(r => `<tr>
+          <td style="text-transform:capitalize">${esc(tidy(r.cat))}</td>
+          <td class="n">${r.n.toLocaleString()}</td>
+          <td class="n">${total ? Math.round(r.n/total*100) + '%' : '—'}</td>
+        </tr>`).join('');
+    }else{
+      $('dTop').textContent = '—';
+      $('dCats').innerHTML = '<tr><td colspan="3" class="empty">No incidents of these types in this window.</td></tr>';
+    }
+
+    const rec = recent.features || [];
+    $('dRecent').innerHTML = rec.length ? rec.map(f => {
+      const a = f.attributes || {};
+      const where2 = [a.nearest_intersection, a.neighborhood].filter(Boolean).join(' · ');
+      return `<div class="drow">
+        <div class="drow-t"><span class="drow-c">${esc(tidy(a.offense_category))}</span>
+          <span class="drow-a">${a.incident_occurred_at ? ago(a.incident_occurred_at) : ''}</span></div>
+        ${where2 ? `<p class="drow-w">${esc(where2)}</p>` : ''}
+      </div>`;
+    }).join('') : '<div class="empty">No recent incidents.</div>';
+
+    await loadDPDPoints(where, seq);
+  }catch(e){
+    console.error('dpd', e);
+    if(seq !== dpdSeq) return;
+    const msg = `<div class="derr">Could not load police incident data: ${esc(e.message)}</div>`;
+    $('dCats').innerHTML = `<tr><td colspan="3">${msg}</td></tr>`;
+    $('dRecent').innerHTML = '';
+    ['dTotal','dNight','dTop'].forEach(id => $(id).textContent = '—');
+  }
+}
+
+/* points for the map + the night share, paged past the 2,000-record limit */
+async function loadDPDPoints(where, seq){
+  const pts = [];
+  for(let page = 0; page < 3; page++){
+    const d = await arc({ where, f:'geojson', outFields:'offense_category,incident_hour_of_day',
+      returnGeometry:'true', outSR:'4326', orderByFields:'ESRI_OID',
+      resultOffset: String(page*2000), resultRecordCount:'2000' });
+    if(seq !== dpdSeq) return;
+    const feats = d.features || [];
+    feats.forEach(f => {
+      const c = f.geometry?.coordinates; if(!c) return;
+      pts.push({ lng:c[0], lat:c[1], cat:f.properties?.offense_category, hour:f.properties?.incident_hour_of_day });
+    });
+    if(feats.length < 2000) break;
+  }
+
+  const withHour = pts.filter(p => p.hour != null && isFinite(Number(p.hour)));
+  const night = withHour.filter(p => { const h = Number(p.hour); return h >= 20 || h < 6; }).length;
+  $('dNight').textContent = withHour.length ? Math.round(night/withHour.length*100) + '%' : '—';
+
+  drawDPD(pts);
+}
+
+function drawDPD(pts){
+  if(!dpdLayer) dpdLayer = L.layerGroup();
+  dpdLayer.clearLayers();
+
+  const cells = new Map();                    // ~1 km cells for a city-wide view
+  pts.forEach(p => {
+    const k = p.lat.toFixed(2) + ',' + p.lng.toFixed(2);
+    const c = cells.get(k) || { lat:0, lng:0, n:0, cats:{} };
+    c.lat += p.lat; c.lng += p.lng; c.n++;
+    const t = tidy(p.cat); c.cats[t] = (c.cats[t] || 0) + 1;
+    cells.set(k, c);
+  });
+
+  cells.forEach(c => {
+    const top = Object.entries(c.cats).sort((a,b) => b[1]-a[1]).slice(0,3)
+      .map(([k,v]) => `${esc(k)} — ${v}`).join('<br>');
+    L.circle([c.lat/c.n, c.lng/c.n], {
+      radius: Math.min(120 + c.n*9, 520), color:DPD_COLOR, weight:1, opacity:.5,
+      fillColor:DPD_COLOR, fillOpacity: Math.min(.1 + c.n*.012, .45)
+    }).addTo(dpdLayer).bindPopup(
+      `<b>${c.n} police-reported incident${c.n>1?'s':''}</b><br>
+       <span style="color:#8EA6CC">DPD records, last ${days} days, within about 1 km</span><br>${top}`);
+  });
+
+  if(showDPD && !map.hasLayer(dpdLayer)) dpdLayer.addTo(map);
+}
+
+/* layer toggles */
+$('layers').addEventListener('click', e => {
+  const b = e.target.closest('[data-l]'); if(!b) return;
+  const on = b.getAttribute('aria-pressed') !== 'true';
+  b.setAttribute('aria-pressed', String(on));
+  if(b.dataset.l === 'riders'){
+    showRiders = on;
+    on ? layer.addTo(map) : map.removeLayer(layer);
+  }else{
+    showDPD = on;
+    if(dpdLayer) on ? dpdLayer.addTo(map) : map.removeLayer(dpdLayer);
+  }
+});
+
+
+/* ================= Route intelligence =================
+   Routes and stops ranked by police-reported incidents within a block of
+   each stop plus rider reports. Drill into a route to see its path and
+   problem stops on the map and ask for an AI briefing. */
+
+let riRows = [], riStops = [], routeLayer = null, riSeq = 0, riSel = null;
+
+function bandCls(b){ return b === 'Lower concern' ? 'b-safe' : b === 'Watch' ? 'b-watch' : b === 'High concern' ? 'b-alert' : 'b-none'; }
+function tidyC(c){ return String(c || '').toLowerCase().replace(/\s*-\s*/g, ' - '); }
+
+async function loadRI(){
+  const seq = ++riSeq;
+  $('riWin').textContent = `last ${days} days`;
+  const [a, b] = await Promise.all([
+    db.rpc('route_intel', { days }),
+    db.rpc('network_problem_stops', { days, lim: 12 }),
+  ]);
+  if(seq !== riSeq) return;
+  if(a.error || b.error){
+    const m = esc((a.error || b.error).message || 'query failed');
+    $('riRoutes').innerHTML = `<div class="derr">Could not load route intelligence: ${m}</div>`;
+    return;
+  }
+  riRows = (a.data || []).filter(r => r.band !== 'No police data' || r.rider > 0);
+  riStops = b.data || [];
+
+  $('riRoutes').innerHTML = riRows.slice(0, 12).map(r => `
+    <div class="ri-row" data-route="${esc(r.route_key)}">
+      <span class="ri-badge" style="${r.color ? `background:${esc(r.color)}` : ''}">${esc(r.agency)} ${esc(r.short_name)}</span>
+      <div class="ri-b">
+        <p class="ri-n">${esc(r.long_name || '')}</p>
+        <p class="ri-m">${r.police} police incidents near stops · ${r.police_night} after dark${
+          r.stops_no_shelter != null ? ` · ${r.stops_no_shelter} of ${r.stops} stops unsheltered` : ''}${
+          r.rider ? ` · <span class="ri-rider">${r.rider} rider reports</span>` : ''}</p>
+      </div>
+      <div class="ri-s"><b class="${bandCls(r.band)}">${r.score ?? '—'}</b><span class="${bandCls(r.band)}">${esc(r.band)}</span></div>
+    </div>`).join('') || '<div class="empty">No routes to rank in this window.</div>';
+
+  $('riStops').innerHTML = riStops.map((p, i) => {
+    const flags = p.is_hub ? '<span class="ri-flag hub">Transit center</span>'
+      : (p.has_shelter === false ? '<span class="ri-flag">No shelter</span>' : '') + (p.has_bench === false ? '<span class="ri-flag">No bench</span>' : '');
+    const routes = String(p.routes || '').split(', ');
+    const rt = routes.length > 4 ? routes.slice(0, 4).join(', ') + ` +${routes.length - 4}` : routes.join(', ');
+    return `<div class="ri-row" data-stop="${i}">
+      <span class="dr-rank">${i + 1}</span>
+      <div class="ri-b">
+        <p class="ri-n">${esc(p.location || 'Stop')} ${flags}</p>
+        <p class="ri-m">${p.police} police incidents within a block · ${p.police_night} after dark · mostly ${esc(tidyC(p.top_category))}${
+          p.rider ? ` · <span class="ri-rider">${p.rider} rider reports</span>` : ''}<br>${esc(rt)}${p.stops > 1 ? ` · ${p.stops} stops` : ''}</p>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">No problem stops in this window.</div>';
+
+  if(riSel) openRoute(riSel, true);
+}
+
+async function openRoute(key, quiet){
+  riSel = key;
+  const r = riRows.find(x => x.route_key === key);
+  if(!r) return;
+  const box = $('riDrill');
+  box.hidden = false;
+  if(!quiet) box.innerHTML = '<div class="empty">Loading route…</div>';
+
+  const [g, ps] = await Promise.all([
+    db.rpc('route_geo', { in_route: key }),
+    db.rpc('route_problem_stops', { in_route: key, days, lim: 8 }),
+  ]);
+  if(riSel !== key) return;
+  const stops = ps.data || [];
+
+  const facts = [
+    `${r.stops} stops`,
+    r.stops_no_shelter != null ? `${r.stops_no_shelter} unsheltered` : 'shelter data not published',
+    r.peak_freq ? `every ${r.peak_freq} min peak / ${r.night_freq} min night` : null,
+    r.coverage_pct < 95 ? `police data covers ${r.coverage_pct}% of stops` : null,
+  ].filter(Boolean).join(' · ');
+
+  box.innerHTML = `
+    <div class="dr-h">
+      <div class="dr-t">
+        <span class="ri-badge" style="${r.color ? `background:${esc(r.color)}` : ''}">${esc(r.agency)} ${esc(r.short_name)}</span>
+        <h3>${esc(r.long_name || '')}</h3>
+        <div class="dr-score ${bandCls(r.band)}">${r.score ?? '—'}<small>${esc(r.band)}</small></div>
+        <p class="dr-f">${facts}</p>
+        <p class="dr-f">${r.police} police incidents near stops · ${r.police_night} after dark · ${r.rider} rider reports${r.rider_open ? ` (${r.rider_open} unresolved)` : ''}</p>
+      </div>
+      <button class="dr-x" id="drClose">Close</button>
+    </div>
+    ${stops.map((p, i) => `<div class="dr-stop" data-ps="${i}">
+      <span class="dr-rank">${i + 1}</span>
+      <div class="ri-b">
+        <p class="ri-n">${esc(p.name)} <span style="color:var(--muted);font-weight:500;font-size:12px">${esc(p.direction || '')}</span>
+          ${p.is_hub ? '<span class="ri-flag hub">Transit center</span>' : (p.has_shelter === false ? '<span class="ri-flag">No shelter</span>' : '')}</p>
+        <p class="ri-m">${p.police} police incidents · ${p.police_night} after dark · mostly ${esc(tidyC(p.top_category))}${
+          p.rider ? ` · <span class="ri-rider">${p.rider} rider reports</span>` : ''}</p>
+      </div>
+    </div>`).join('') || '<div class="empty">No problem stops on this route in this window.</div>'}
+    <div class="dr-ai">
+      <button class="btn" id="drBrief">Generate route briefing</button>
+      <pre id="drText" hidden></pre>
+    </div>`;
+  box._stops = stops;
+
+  drawRoute(g.data || {}, stops);
+  if(!quiet) box.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function drawRoute(g, stops){
+  if(!routeLayer) routeLayer = L.layerGroup().addTo(map);
+  routeLayer.clearLayers();
+  const bounds = [];
+  (g.path || []).forEach(p => {
+    const gj = L.geoJSON(p.geometry, { style:{ color:'#F5C21B', weight:4, opacity:.9 } }).addTo(routeLayer);
+    const b = gj.getBounds(); if(b.isValid()) bounds.push(b);
+  });
+  stops.forEach((p, i) => {
+    L.circleMarker([p.lat, p.lng], { radius: Math.min(7 + Math.sqrt(p.concern) * 1.5, 16), color:'#fff', weight:2,
+      fillColor: p.rider_dangerous ? '#FF5C5C' : '#F5A623', fillOpacity:.95 })
+      .addTo(routeLayer)
+      .bindPopup(`<b>${i + 1}. ${esc(p.name)}</b><br>${p.police} police incidents within a block · ${p.police_night} after dark`);
+  });
+  if(bounds.length){
+    const all = bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast()));
+    map.fitBounds(all.pad(0.1));
+  }
+}
+
+function closeRoute(){
+  riSel = null;
+  $('riDrill').hidden = true;
+  if(routeLayer) routeLayer.clearLayers();
+}
+
+$('riSec').addEventListener('click', async e => {
+  const tab = e.target.closest('[data-t]');
+  if(tab){
+    [...$('riTabs').children].forEach(b => b.setAttribute('aria-pressed', String(b === tab)));
+    $('riRoutes').hidden = tab.dataset.t !== 'routes';
+    $('riStops').hidden  = tab.dataset.t !== 'stops';
+    return;
+  }
+  if(e.target.closest('#drClose')){ closeRoute(); return; }
+
+  const brief = e.target.closest('#drBrief');
+  if(brief){
+    const out = $('drText');
+    brief.disabled = true; brief.textContent = 'Working…';
+    out.hidden = false; out.textContent = 'Reading this route’s stops and incidents…';
+    try{
+      const r = await fetch(SUPABASE_URL + '/functions/v1/tw-ai', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + SUPABASE_KEY },
+        body: JSON.stringify({ action:'route_brief', route: riSel, days })
+      });
+      const d = await r.json();
+      if(!r.ok || d.error) throw new Error(d.error || r.status);
+      out.textContent = d.text;
+      brief.textContent = 'Regenerate';
+    }catch(err){
+      console.error(err);
+      out.textContent = 'Could not generate the briefing: ' + (err.message || err);
+      brief.textContent = 'Generate route briefing';
+    }
+    brief.disabled = false;
+    return;
+  }
+
+  const ps = e.target.closest('[data-ps]');
+  if(ps){
+    const p = ($('riDrill')._stops || [])[Number(ps.dataset.ps)];
+    if(p){ map.setView([p.lat, p.lng], 16); $('map').scrollIntoView({ behavior:'smooth', block:'center' }); }
+    return;
+  }
+  const st = e.target.closest('[data-stop]');
+  if(st){
+    const p = riStops[Number(st.dataset.stop)];
+    if(p){
+      map.setView([p.lat, p.lng], 16);
+      L.popup().setLatLng([p.lat, p.lng]).setContent(`<b>${esc(p.location)}</b><br>${p.police} police incidents within a block · ${p.police_night} after dark`).openOn(map);
+      $('map').scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+    return;
+  }
+  const row = e.target.closest('[data-route]');
+  if(row) openRoute(row.dataset.route);
+});
+
 /* ---------- access ---------- */
 async function showApp(){
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
-  if(!map) initMap(); else setTimeout(() => map.invalidateSize(), 60);
+  if(!map) initMap();
+  setTimeout(() => { map.invalidateSize(); map.setView(DETROIT, 11); }, 80);
   refresh();
+  loadDPD();
+  loadRI();
 }
 
 async function signIn(){

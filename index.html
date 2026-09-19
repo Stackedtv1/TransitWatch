@@ -296,6 +296,39 @@
 
   /* the hidden attribute must always win over display rules */
   [hidden]{display:none !important}
+
+  /* ---- route intelligence ---- */
+  .s-none{color:var(--muted)}
+  .rt-facts{margin:8px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .rt-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rail);
+    margin-top:12px;border-radius:10px;overflow:hidden}
+  .rt-stats div{background:var(--surface);padding:10px}
+  .rt-stats b{display:block;font-family:'Archivo Narrow',sans-serif;font-size:24px;line-height:1}
+  .rt-stats span{display:block;font-size:11px;color:var(--muted);margin-top:4px;line-height:1.3}
+  .rt-map{height:260px;background:var(--surface);border-bottom:1px solid var(--rail)}
+  .rt-legend{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0;padding:9px 16px;
+    font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--rail)}
+  .rt-legend i{display:inline-block;width:10px;height:10px;border-radius:50%}
+  .lg-path{background:#F5C21B;border-radius:2px!important;height:4px!important;width:14px!important}
+  .lg-stop{background:#8EA6CC;width:6px!important;height:6px!important;margin-left:8px}
+  .lg-prob{background:#F5A623;margin-left:8px}
+  .rt-sub2{margin:0;padding:15px 16px 4px;font-family:'Archivo Narrow',sans-serif;font-size:12px;
+    letter-spacing:.11em;text-transform:uppercase;color:var(--signal)}
+  .pstop{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid rgba(30,78,143,.5)}
+  .pstop-rank{flex:none;width:24px;height:24px;border-radius:50%;background:var(--warn);color:#2B1A00;
+    display:flex;align-items:center;justify-content:center;font:700 12px Inter,sans-serif}
+  .pstop-b{flex:1;min-width:0}
+  .pstop-n{margin:0;font-weight:600;font-size:14.5px}
+  .pstop-d{font-weight:500;font-size:12px;color:var(--muted)}
+  .pstop-f{margin:5px 0 0;display:flex;gap:6px;flex-wrap:wrap}
+  .flag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;
+    background:rgba(255,92,92,.14);color:#FF9A9A}
+  .flag.hub{background:rgba(79,163,217,.18);color:#8CC8F0}
+  .pstop-m{margin:5px 0 0;font-size:13px;color:var(--muted);line-height:1.45}
+  .pstop-a{display:flex;gap:7px;margin-top:9px}
+  .pstop-a .ai-btn{margin:0}
+  .rt-head .rt-title{margin:8px 0 3px}
+  .rt-cov{margin:0;padding:14px 16px 22px;font-size:12px;color:var(--muted);line-height:1.55}
 </style>
 </head>
 <body>
@@ -703,7 +736,7 @@ document.getElementById('reportForm').addEventListener('submit', async e => {
     category: selectedCat,
     severity: selectedSev,
     description: document.getElementById('desc').value.trim() || null,
-    lat: pos.lat, lng: pos.lng,
+    lat: (reportAt || pos).lat, lng: (reportAt || pos).lng,
     route: document.getElementById('route').value.trim() || null,
     stop_name: document.getElementById('stop').value.trim() || null,
     reporter_token: deviceToken()
@@ -713,6 +746,12 @@ document.getElementById('reportForm').addEventListener('submit', async e => {
   if(error){ console.error(error); toast('Report did not post — try again'); return; }
 
   e.target.reset();
+  if(reportAt){
+    reportAt = null; routeRows = null;       // route scores change with this report
+    document.getElementById('pinNote').textContent = haveFix
+      ? 'Pinned to your current location. No account, no name attached. TransitWatch is not an emergency service — call 911 for anything urgent.'
+      : 'Location is off, so this pins to downtown Detroit. Turn location on for accurate reports.';
+  }
   document.querySelectorAll('#catChips .chip').forEach(c => c.setAttribute('aria-pressed','false'));
   selectedCat = null;
   toast('Posted. Other riders can see it now.');
@@ -1112,10 +1151,7 @@ const DPD_URL = 'https://services2.arcgis.com/qvkbeam7Wirps6zC/arcgis/rest/servi
 const DPD_DAYS = 90;
 
 /* charges that plausibly affect someone waiting at or walking to a stop */
-const DPD_CHARGES = [
-  'ROBBERY','ASSAULT','AGGRAVATED ASSAULT','LARCENY','WEAPONS OFFENSE',
-  'CARJACKING','STOLEN VEHICLE','SEX OFFENSES','KIDNAPPING','HOMICIDE'
-];
+const DPD_CATS = ['ASSAULT','ROBBERY','WEAPON','HOMICIDE','KIDNAP','SEX','LARCENY','STOLEN VEHICLE','CARJACK'];
 
 let dpdOn = false, dpdLayer = null, dpdCache = null, dpdCacheAt = 0;
 
@@ -1127,12 +1163,12 @@ function dpdSince(){
 async function fetchDPD(bounds){
   const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
   const params = new URLSearchParams({
-    where: `incident_occurred_at >= TIMESTAMP '${dpdSince()}'`,
+    where: `incident_occurred_at >= TIMESTAMP '${dpdSince()}' AND (` + DPD_CATS.map(c => `offense_category LIKE '%${c}%'`).join(' OR ') + ')',
     geometry: `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`,
     geometryType: 'esriGeometryEnvelope',
     inSR: '4326', outSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
-    outFields: 'charge_description,incident_occurred_at,incident_hour_of_day,nearest_intersection',
+    outFields: 'offense_category,incident_occurred_at,incident_hour_of_day,nearest_intersection',
     returnGeometry: 'true',
     resultRecordCount: '2000',
     f: 'geojson'
@@ -1146,11 +1182,9 @@ async function fetchDPD(bounds){
     const c = f.geometry?.coordinates;
     if(!c) return null;
     const p = f.properties || {};
-    const charge = (p.charge_description || '').toUpperCase();
-    if(!DPD_CHARGES.some(k => charge.includes(k))) return null;
     return {
       lat: c[1], lng: c[0],
-      charge: p.charge_description || 'Incident',
+      charge: p.offense_category || 'Incident',
       hour: p.incident_hour_of_day,
       at: p.incident_occurred_at,
       where: p.nearest_intersection || null
@@ -1166,7 +1200,7 @@ function dpdGrid(rows){
     c.lat += r.lat; c.lng += r.lng; c.n++;
     const h = Number(r.hour);
     if(isFinite(h) && (h >= 20 || h < 6)) c.night++;
-    const key = r.charge.split('-')[0].trim();
+    const key = r.charge.trim();
     c.charges[key] = (c.charges[key] || 0) + 1;
     cells.set(k, c);
   });
@@ -1246,14 +1280,21 @@ if(typeof map !== 'undefined' && map){
 }
 
 
-/* ================= Route network =================
-   Real DDOT + SMART routes from each agency's GTFS feed,
-   with TransitWatch report data layered on top. */
+/* ================= Route intelligence =================
+   Every DDOT and SMART route with its real path and stops. Each route is
+   scored on police-reported incidents (City of Detroit open data) within
+   about a block of its stops, plus TransitWatch rider reports. Tap a route
+   to see its problem stops; "Report here" pins a report to that stop, which
+   flows straight into the agency Command Center. */
 
 let routeView = null, routeRows = null, routeAgency = 'all', routeQuery = '';
+let rtMap = null, rtLayer = null, rtStopMarks = new Map();
+let reportAt = null;     // set when a rider reports from a specific stop
 
-function scoreBand(n){ return n >= 85 ? 'safe' : n >= 60 ? 'watch' : 'alert'; }
-function scoreWord(n){ return n >= 85 ? 'Safe' : n >= 60 ? 'Watch' : 'High concern'; }
+function bandClass(b){
+  return b === 'Lower concern' ? 'safe' : b === 'Watch' ? 'watch' : b === 'High concern' ? 'alert' : 'none';
+}
+function tidyCat(c){ return String(c || '').toLowerCase().replace(/\s*-\s*/g, ' - '); }
 
 async function loadRoutes(){
   const el = document.getElementById('routeList');
@@ -1261,20 +1302,29 @@ async function loadRoutes(){
 
   if(!routeRows){
     el.innerHTML = '<div class="empty">Loading routes…</div>';
-    const { data, error } = await db.rpc('route_network', { days: 30 });
+    const { data, error } = await db.rpc('route_intel', { days: 30 });
     if(error){
       console.error(error);
-      el.innerHTML = '<div class="empty">Could not load the route network.</div>';
+      el.innerHTML = '<div class="empty">Could not load the route network.<br><small>' + escapeHtml(error.message || '') + '</small></div>';
       return;
     }
-    routeRows = data || [];
+    routeRows = (data || []).map(r => ({ ...r, id: r.route_key }));
   }
-
-  if(!routeRows.length){
-    el.innerHTML = '<div class="empty">Route network not loaded yet.</div>';
-    return;
-  }
+  if(!routeRows.length){ el.innerHTML = '<div class="empty">Route network not loaded yet.</div>'; return; }
   renderRoutes();
+}
+
+function routeMeta(r){
+  const bits = [];
+  if(r.band === 'No police data'){
+    bits.push('Runs mostly outside Detroit');
+    if(!r.rider) bits.push('no rider reports yet');
+  }else{
+    bits.push(`${r.police} police incident${r.police===1?'':'s'} near stops`);
+    if(r.police_night) bits.push(`${r.police_night} after dark`);
+  }
+  if(r.rider) bits.push(`<span class="rt-bad">${r.rider} rider report${r.rider===1?'':'s'}</span>`);
+  return bits.join(' · ');
 }
 
 function renderRoutes(){
@@ -1282,8 +1332,7 @@ function renderRoutes(){
   const q = routeQuery.trim().toLowerCase();
   const rows = routeRows.filter(r =>
     (routeAgency === 'all' || r.agency === routeAgency) &&
-    (!q || (r.short_name||'').toLowerCase().includes(q)
-        || (r.long_name||'').toLowerCase().includes(q))
+    (!q || (r.short_name||'').toLowerCase().includes(q) || (r.long_name||'').toLowerCase().includes(q))
   );
 
   const head = `
@@ -1294,36 +1343,25 @@ function renderRoutes(){
         <button type="button" class="chip" data-ag="SMART" aria-pressed="${routeAgency==='SMART'}">SMART</button>
       </div>
       <input type="search" id="rtSearch" placeholder="Search route or destination" value="${escapeHtml(routeQuery)}">
-      <p class="rt-note">Browse DDOT and SMART routes. Safety information appears as rider reports come in.</p>
+      <p class="rt-note">Routes with the most concern first. Scores compare police-reported incidents within a block of each route's stops with other routes, plus rider reports. Tap a route for its problem stops.</p>
     </div>`;
 
   if(!rows.length){
     el.innerHTML = head + '<div class="empty">No routes match that search.</div>';
-    wireRouteControls();
-    return;
+    wireRouteControls(); return;
   }
 
   el.innerHTML = head + rows.map(r => {
-    const score = Number(r.score);
-    const band  = scoreBand(score);
-    const n     = Number(r.reports);
-    const bits  = n
-      ? [`${n} report${n===1?'':'s'} in 30 days`,
-         Number(r.dangerous) ? `${r.dangerous} dangerous` : null,
-         Number(r.unresolved) ? `${r.unresolved} unresolved` : null,
-         r.last_at ? `last ${ago(r.last_at)}` : null].filter(Boolean).join(' · ')
-      : 'No incidents reported in the last 30 days';
-
+    const bc = bandClass(r.band);
     return `<div class="rt" data-route="${escapeHtml(r.id)}">
       <div class="rt-h">
         <span class="rt-badge" style="${r.color ? `background:${escapeHtml(r.color)}` : ''}">${escapeHtml(r.agency)} ${escapeHtml(r.short_name||'')}</span>
         <p class="rt-n">${escapeHtml(r.long_name || '')}</p>
-        <span class="rt-score s-${band}">${score}</span>
+        <span class="rt-score s-${bc}">${r.score == null ? '—' : r.score}</span>
       </div>
-      <p class="rt-m">${scoreWord(score)} · ${bits}</p>
+      <p class="rt-m"><span class="s-${bc}">${escapeHtml(r.band)}</span> · ${routeMeta(r)}</p>
     </div>`;
   }).join('');
-
   wireRouteControls();
 }
 
@@ -1331,54 +1369,169 @@ function wireRouteControls(){
   const ag = document.getElementById('rtAgency');
   if(ag) ag.addEventListener('click', e => {
     const b = e.target.closest('[data-ag]'); if(!b) return;
-    routeAgency = b.dataset.ag;
-    renderRoutes();
+    routeAgency = b.dataset.ag; renderRoutes();
   });
   const q = document.getElementById('rtSearch');
   if(q) q.addEventListener('input', e => {
     routeQuery = e.target.value;
-    const pos0 = e.target.selectionStart;
+    const p0 = e.target.selectionStart;
     renderRoutes();
     const nq = document.getElementById('rtSearch');
-    if(nq){ nq.focus(); nq.setSelectionRange(pos0, pos0); }
+    if(nq){ nq.focus(); nq.setSelectionRange(p0, p0); }
   });
+}
+
+function coverageNote(m){
+  if(m.band === 'No police data')
+    return `This route runs mostly outside Detroit, where TransitWatch doesn't have police data yet (${m.coverage_pct}% of its stops are covered). Its safety picture comes from rider reports.`;
+  const part = m.coverage_pct >= 95 ? '' : ` Police data covers about ${m.coverage_pct}% of this route's stops, the parts inside Detroit.`;
+  return `Police-reported incidents: City of Detroit open data, last 30 days, within 150 m (about a block) of a stop.${part}`;
 }
 
 async function loadRouteDetail(id){
   const el = document.getElementById('routeList');
-  const meta = (routeRows || []).find(r => r.id === id);
-  if(!meta){ routeView = null; return loadRoutes(); }
+  const m = (routeRows || []).find(r => r.id === id);
+  if(!m){ routeView = null; return loadRoutes(); }
 
-  el.innerHTML = '<div class="empty">Loading…</div>';
-  const label = `${meta.agency} ${meta.short_name}`;
-  const { data } = await db.rpc('route_stops', { in_route: label, days: 30 });
-  const rows = data || [];
-  const score = Number(meta.score);
+  el.innerHTML = '<div class="empty">Loading route…</div>';
+  const [geo, ps] = await Promise.all([
+    db.rpc('route_geo', { in_route: id }),
+    db.rpc('route_problem_stops', { in_route: id, days: 30, lim: 10 }),
+  ]);
+  if(routeView !== id) return;                        // rider moved on
+  if(geo.error || ps.error){
+    console.error(geo.error || ps.error);
+    el.innerHTML = '<button class="rt-back" id="rtBack">← All routes</button><div class="empty">Could not load this route.</div>';
+    return;
+  }
+  const stops = ps.data || [];
+  const bc = bandClass(m.band);
+
+  const facts = [
+    `${m.stops} stops`,
+    m.stops_no_shelter != null ? `${m.stops_no_shelter} without a shelter` : null,
+    m.peak_freq ? `every ${m.peak_freq} min at peak` : null,
+    m.night_freq ? `every ${m.night_freq} min at night` : null,
+    m.weekday_span ? `weekdays ${escapeHtml(m.weekday_span)}` : null,
+  ].filter(Boolean);
 
   el.innerHTML = `
     <button class="rt-back" id="rtBack">← All routes</button>
     <div class="rt-head">
-      <span class="rt-badge big" style="${meta.color ? `background:${escapeHtml(meta.color)}` : ''}">${escapeHtml(meta.agency)} ${escapeHtml(meta.short_name||'')}</span>
-      <h2 class="rt-title">${escapeHtml(meta.long_name || '')}</h2>
-      <div class="rt-scorebig s-${scoreBand(score)}">${score}<small>/100 · ${scoreWord(score)}</small></div>
+      <span class="rt-badge big" style="${m.color ? `background:${escapeHtml(m.color)}` : ''}">${escapeHtml(m.agency)} ${escapeHtml(m.short_name||'')}</span>
+      <h2 class="rt-title">${escapeHtml(m.long_name || '')}</h2>
+      <div class="rt-scorebig s-${bc}">${m.score == null ? '—' : m.score}<small>${m.score == null ? '' : '/100 · '}${escapeHtml(m.band)}</small></div>
+      <p class="rt-facts">${facts.join(' · ')}</p>
+      <div class="rt-stats">
+        <div><b>${m.police}</b><span>police incidents near stops</span></div>
+        <div><b>${m.police_night}</b><span>after dark</span></div>
+        <div><b>${m.rider}</b><span>rider reports</span></div>
+      </div>
     </div>
-    ${rows.length
-      ? rows.map(r => `<div class="stop">
-          <div class="stop-b">
-            <p class="stop-n">${escapeHtml(r.stop_name)}</p>
-            <p class="stop-m">${r.reports} report${r.reports==1?'':'s'}${
-              r.dangerous ? ` · <span class="rt-bad">${r.dangerous} dangerous</span>` : ''}${
-              r.confirms ? ` · ${r.confirms} confirmed` : ''} · ${ago(r.last_at)}</p>
+    <div id="rtMap" class="rt-map"></div>
+    <p class="rt-legend"><i class="lg-path"></i>Route <i class="lg-stop"></i>Stop <i class="lg-prob"></i>Problem stop</p>
+
+    <h3 class="rt-sub2">Problem stops</h3>
+    ${stops.length ? stops.map((p, i) => {
+      const flags = [];
+      if(p.is_hub) flags.push('<span class="flag hub">Transit center</span>');
+      else if(p.has_shelter === false) flags.push('<span class="flag">No shelter</span>');
+      if(!p.is_hub && p.has_bench === false) flags.push('<span class="flag">No bench</span>');
+      const line = [];
+      if(p.police) line.push(`${p.police} police incident${p.police===1?'':'s'} within a block`);
+      if(p.police_night) line.push(`${p.police_night} after dark`);
+      if(p.top_category) line.push(`mostly ${escapeHtml(tidyCat(p.top_category))}`);
+      if(p.rider) line.push(`<span class="rt-bad">${p.rider} rider report${p.rider===1?'':'s'}</span>`);
+      return `<div class="pstop" data-i="${i}">
+        <div class="pstop-rank">${i+1}</div>
+        <div class="pstop-b">
+          <p class="pstop-n">${escapeHtml(p.name || 'Stop ' + p.stop_code)}${p.direction ? ` <span class="pstop-d">${escapeHtml(p.direction)}</span>` : ''}</p>
+          ${flags.length ? `<p class="pstop-f">${flags.join('')}</p>` : ''}
+          <p class="pstop-m">${line.join(' · ')}</p>
+          <div class="pstop-a">
+            <button type="button" class="ai-btn sm" data-show="${i}">Show on map</button>
+            <button type="button" class="ai-btn sm" data-report="${i}">Report here</button>
           </div>
-          ${r.lat ? `<a class="stop-c" href="https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}" target="_blank" rel="noopener">Map</a>` : ''}
-        </div>`).join('')
-      : `<div class="empty">No rider reports on this route in the last 30 days.<br>
-           Riding it? Post what you see.</div>`}
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty">${m.band === 'No police data'
+        ? 'No rider reports on this route yet.<br>Riding it? Tap a stop on the map, or post what you see.'
+        : 'Nothing reported within a block of this route\'s stops in the last 30 days.'}</div>`}
+    <p class="rt-cov">${coverageNote(m)}</p>
   `;
+  el._stops = stops;
+  el._meta = m;
+  drawRouteMap(geo.data || {}, stops);
+}
+
+function drawRouteMap(g, problems){
+  if(rtMap){ rtMap.remove(); rtMap = null; }
+  rtStopMarks = new Map();
+  const box = document.getElementById('rtMap');
+  if(!box) return;
+
+  rtMap = L.map(box, { zoomControl:false, attributionControl:false });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(rtMap);
+  rtLayer = L.layerGroup().addTo(rtMap);
+
+  const bounds = [];
+  (g.path || []).forEach(p => {
+    const gj = L.geoJSON(p.geometry, { style:{ color:'#F5C21B', weight:4, opacity:.85 } }).addTo(rtLayer);
+    const b = gj.getBounds(); if(b.isValid()) bounds.push(b);
+  });
+  (g.stops || []).forEach(st => {
+    L.circleMarker([st.lat, st.lng], { radius:3, color:'#8EA6CC', weight:1, fillColor:'#8EA6CC', fillOpacity:.9 })
+      .addTo(rtLayer).bindPopup(`<b>${escapeHtml(st.name || 'Stop')}</b>${st.direction ? '<br>' + escapeHtml(st.direction) : ''}`);
+  });
+  problems.forEach((p, i) => {
+    const r = Math.min(7 + Math.sqrt(p.concern) * 1.6, 17);
+    const mk = L.circleMarker([p.lat, p.lng], { radius:r, color:'#fff', weight:2,
+      fillColor: p.rider_dangerous ? '#FF5C5C' : '#F5A623', fillOpacity:.9 })
+      .addTo(rtLayer)
+      .bindPopup(`<b>${i+1}. ${escapeHtml(p.name || 'Stop')}</b><br>${p.police} police incidents within a block · ${p.police_night} after dark${
+        p.rider ? `<br>${p.rider} rider reports` : ''}`);
+    rtStopMarks.set(i, mk);
+  });
+
+  if(bounds.length){
+    const all = bounds.reduce((a, b) => a.extend(b), L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast()));
+    rtMap.fitBounds(all.pad(0.08));
+  }else{
+    rtMap.setView([42.3314, -83.0458], 12);
+  }
+  setTimeout(() => rtMap && rtMap.invalidateSize(), 80);
 }
 
 document.getElementById('routeList').addEventListener('click', e => {
-  if(e.target.closest('#rtBack')){ routeView = null; loadRoutes(); return; }
+  const el = document.getElementById('routeList');
+  if(e.target.closest('#rtBack')){
+    routeView = null;
+    if(rtMap){ rtMap.remove(); rtMap = null; }
+    loadRoutes(); return;
+  }
+  const show = e.target.closest('[data-show]');
+  if(show){
+    const i = Number(show.dataset.show), p = (el._stops || [])[i];
+    if(p && rtMap){
+      rtMap.setView([p.lat, p.lng], 17);
+      rtStopMarks.get(i)?.openPopup();
+      document.getElementById('rtMap').scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+    return;
+  }
+  const rep = e.target.closest('[data-report]');
+  if(rep){
+    const p = (el._stops || [])[Number(rep.dataset.report)], m = el._meta;
+    if(!p || !m) return;
+    reportAt = { lat: p.lat, lng: p.lng, label: p.name };
+    document.getElementById('route').value = `${m.agency} ${m.short_name}`;
+    document.getElementById('stop').value = p.name || '';
+    document.getElementById('pinNote').textContent =
+      `Pinned to ${p.name || 'this stop'} on ${m.agency} ${m.short_name}. No account, no name attached. TransitWatch is not an emergency service — call 911 for anything urgent.`;
+    switchView('report');
+    window.scrollTo({ top: 0 });
+    return;
+  }
   const card = e.target.closest('[data-route]');
   if(card){ routeView = card.dataset.route; loadRouteDetail(routeView); }
 });
