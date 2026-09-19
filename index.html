@@ -293,6 +293,9 @@
   .shelter button{background:transparent;border:1px solid var(--signal);color:var(--signal);
     border-radius:8px;padding:8px 13px;font:600 12.5px Inter,sans-serif;
     cursor:pointer;margin-left:auto;white-space:nowrap}
+
+  /* the hidden attribute must always win over display rules */
+  [hidden]{display:none !important}
 </style>
 </head>
 <body>
