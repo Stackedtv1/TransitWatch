@@ -132,7 +132,7 @@
   <div class="gate-box">
     <h1 class="brand" style="margin-bottom:6px">TRANSIT<span>WATCH</span></h1>
     <p class="gate-sub">Command Center — agency access</p>
-    <input type="email" id="gEmail" placeholder="Email" autocomplete="username">
+    <input type="email" id="gEmail" placeholder="Email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
     <input type="password" id="gPass" placeholder="Password" autocomplete="current-password">
     <button class="gate-btn" id="gGo">Sign in</button>
     <p class="gate-err" id="gErr" hidden></p>
@@ -209,10 +209,16 @@
 </p>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.7/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 const SUPABASE_URL = 'https://cqopycrohvojllarltsv.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VcVKFhjZfPboTs32fF13ag_fz7bs8PR';
+if(!window.supabase){
+  document.addEventListener('DOMContentLoaded', () => {});
+  const e = document.getElementById('gErr');
+  if(e){ e.hidden = false; e.textContent = 'Could not load the sign-in library. Check your connection and reload.'; }
+  throw new Error('supabase-js failed to load');
+}
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const DETROIT = [42.3314, -83.0458];
 
@@ -437,7 +443,7 @@ async function showApp(){
 async function signIn(){
   const btn = document.getElementById('gGo');
   const err = document.getElementById('gErr');
-  const email = document.getElementById('gEmail').value.trim();
+  const email = document.getElementById('gEmail').value.trim().toLowerCase();
   const pass  = document.getElementById('gPass').value;
   if(!email || !pass){ err.hidden = false; err.textContent = 'Enter an email and password.'; return; }
 
