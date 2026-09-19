@@ -329,6 +329,51 @@
   .pstop-a .ai-btn{margin:0}
   .rt-head .rt-title{margin:8px 0 3px}
   .rt-cov{margin:0;padding:14px 16px 22px;font-size:12px;color:var(--muted);line-height:1.55}
+
+  /* ---- live service (arrivals, on-time, cancellations, detours) ---- */
+  .lv{padding:4px 16px 14px;border-bottom:1px solid var(--rail)}
+  .lv .rt-sub2{padding:12px 0 6px;display:flex;align-items:center;gap:8px}
+  .lv-line{margin:0;font-size:14px;line-height:1.5}
+  .lv-line b{font-family:'Archivo Narrow',sans-serif;font-size:18px}
+  .lv-note{margin:6px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
+  .st{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;white-space:nowrap;vertical-align:1px}
+  .st.on_time{background:rgba(47,212,138,.15);color:var(--safe)}
+  .st.late{background:rgba(245,166,35,.17);color:var(--warn)}
+  .st.early{background:rgba(79,163,217,.18);color:#8CC8F0}
+  .st.stopped,.st.canceled{background:rgba(255,92,92,.16);color:#FF9A9A}
+  .st.unrated{background:var(--raised);color:var(--muted)}
+  .lv-card{margin-top:10px;padding:10px 12px;border-radius:9px;font-size:13px;line-height:1.5;
+    background:rgba(245,166,35,.09);border-left:3px solid var(--warn)}
+  .lv-card.bad{background:rgba(255,92,92,.09);border-left-color:var(--alert)}
+  .lv-card b{display:block;font-size:13.5px;margin-bottom:2px}
+  .lv-card small{color:var(--muted)}
+  .bus-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(30,78,143,.5);font-size:13px}
+  .bus-row:first-of-type{border-top:0}
+  .bus-row .bid{flex:none;width:44px;color:var(--muted);font-size:11.5px;padding-top:2px}
+  .bus-row .bb{flex:1;min-width:0;line-height:1.45}
+  .bus-row .bb span{color:var(--muted)}
+  .arr{display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid rgba(30,78,143,.45);font-size:13px}
+  .arr:first-child{border-top:0}
+  .arr .min{flex:none;width:52px;font:700 17px 'Archivo Narrow',sans-serif;font-variant-numeric:tabular-nums}
+  .arr .min small{font:500 11px Inter,sans-serif;color:var(--muted);margin-left:2px}
+  .arr .to{flex:1;min-width:0;line-height:1.35}
+  .arr .to span{color:var(--muted);font-size:12px}
+  .arr.x .min,.arr.x .to{text-decoration:line-through;color:var(--muted)}
+  .dot-live{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--safe);margin-right:4px;vertical-align:1px}
+  .pstop-arr{margin-top:8px;padding:4px 10px;background:var(--surface);border-radius:8px}
+  .nb{padding:12px 16px 14px;border-bottom:1px solid var(--rail)}
+  .nb-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .nb-h .ai-btn{margin:0 0 0 auto}
+  .nb-stop{padding:9px 0 3px}
+  .nb-stop h4{margin:0 0 3px;font-size:14px;font-weight:600}
+  .nb-stop h4 span{font-weight:500;font-size:12px;color:var(--muted)}
+  .bus.late{background:var(--warn);color:#2B1A00}
+  .bus.early{background:#4FA3D9;color:#04213A}
+  .bus.stopped{background:var(--alert);color:#fff}
+  .bus.unrated,.bus.no_trip{background:#8EA6CC;color:#0B1F3F}
+  .pop-arr{min-width:220px;margin-top:4px}
+  .pop-arr .arr .to span,.pop-arr .arr .min small{color:#5B6B85}
+  .lv-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -378,6 +423,13 @@
     </section>
 
     <section class="view" id="v-near">
+      <div class="nb" id="nearBuses">
+        <div class="nb-h">
+          <span class="brief-tag">Next buses near you</span>
+          <button type="button" class="ai-btn sm" id="nbRefresh">Refresh</button>
+        </div>
+        <div id="nbList"><div class="empty">Finding stops near you…</div></div>
+      </div>
       <div class="digest">
         <div class="digest-head">
           <span class="brief-tag">Agency briefing</span>
@@ -768,6 +820,7 @@ function switchView(name){
   if(name === 'map' && map) setTimeout(() => map.invalidateSize(), 60);
   if(name === 'help') loadResources();
   if(name === 'routes') loadRoutes();
+  if(name === 'near') loadNearBuses();
 }
 document.querySelector('nav').addEventListener('click', e => {
   const b = e.target.closest('[data-view]'); if(b) switchView(b.dataset.view);
@@ -1428,8 +1481,9 @@ async function loadRouteDetail(id){
         <div><b>${m.rider}</b><span>rider reports</span></div>
       </div>
     </div>
+    <section class="lv" id="rtLive"><h3 class="rt-sub2">Live right now</h3><p class="lv-note">Checking live service…</p></section>
     <div id="rtMap" class="rt-map"></div>
-    <p class="rt-legend"><i class="lg-path"></i>Route <i class="lg-stop"></i>Stop <i class="lg-prob"></i>Problem stop</p>
+    <p class="rt-legend"><i class="lg-path"></i>Route <i class="lg-stop"></i>Stop — tap for next buses <i class="lg-prob"></i>Problem stop</p>
 
     <h3 class="rt-sub2">Problem stops</h3>
     ${stops.length ? stops.map((p, i) => {
@@ -1449,9 +1503,11 @@ async function loadRouteDetail(id){
           ${flags.length ? `<p class="pstop-f">${flags.join('')}</p>` : ''}
           <p class="pstop-m">${line.join(' · ')}</p>
           <div class="pstop-a">
+            <button type="button" class="ai-btn sm" data-next="${i}">Next bus</button>
             <button type="button" class="ai-btn sm" data-show="${i}">Show on map</button>
             <button type="button" class="ai-btn sm" data-report="${i}">Report here</button>
           </div>
+          <div class="pstop-arr" id="pa-${i}" hidden></div>
         </div>
       </div>`;
     }).join('') : `<div class="empty">${m.band === 'No police data'
@@ -1461,10 +1517,11 @@ async function loadRouteDetail(id){
   `;
   el._stops = stops;
   el._meta = m;
-  drawRouteMap(geo.data || {}, stops);
+  drawRouteMap(geo.data || {}, stops, m);
+  loadRouteLive(id, m);
 }
 
-function drawRouteMap(g, problems){
+function drawRouteMap(g, problems, meta){
   if(rtMap){ rtMap.remove(); rtMap = null; }
   rtStopMarks = new Map();
   const box = document.getElementById('rtMap');
@@ -1480,8 +1537,9 @@ function drawRouteMap(g, problems){
     const b = gj.getBounds(); if(b.isValid()) bounds.push(b);
   });
   (g.stops || []).forEach(st => {
-    L.circleMarker([st.lat, st.lng], { radius:3, color:'#8EA6CC', weight:1, fillColor:'#8EA6CC', fillOpacity:.9 })
+    const mk = L.circleMarker([st.lat, st.lng], { radius:4, color:'#8EA6CC', weight:1, fillColor:'#8EA6CC', fillOpacity:.9 })
       .addTo(rtLayer).bindPopup(`<b>${escapeHtml(st.name || 'Stop')}</b>${st.direction ? '<br>' + escapeHtml(st.direction) : ''}`);
+    if(meta && st.code) mk.on('click', () => stopArrivalsPopup(mk, meta.agency, st.code, `${st.name || 'Stop'}${st.direction ? ' · ' + st.direction : ''}`));
   });
   problems.forEach((p, i) => {
     const r = Math.min(7 + Math.sqrt(p.concern) * 1.6, 17);
@@ -1506,8 +1564,20 @@ document.getElementById('routeList').addEventListener('click', e => {
   const el = document.getElementById('routeList');
   if(e.target.closest('#rtBack')){
     routeView = null;
+    clearInterval(rtLiveTimer);
     if(rtMap){ rtMap.remove(); rtMap = null; }
     loadRoutes(); return;
+  }
+  const nx = e.target.closest('[data-next]');
+  if(nx){
+    const i = Number(nx.dataset.next), p = (el._stops || [])[i], m = el._meta, box = document.getElementById('pa-' + i);
+    if(!p || !m || !box) return;
+    if(!box.hidden){ box.hidden = true; nx.textContent = 'Next bus'; return; }
+    box.hidden = false; box.innerHTML = '<p class="lv-note">Checking next buses…</p>'; nx.textContent = 'Hide';
+    live({ action:'stop', agency:m.agency, code:p.stop_code })
+      .then(d => { box.innerHTML = arrList(d.arrivals.slice(0, 4), true); })
+      .catch(() => { box.innerHTML = '<p class="lv-note">Live arrivals are unavailable right now.</p>'; });
+    return;
   }
   const show = e.target.closest('[data-show]');
   if(show){
@@ -1537,6 +1607,178 @@ document.getElementById('routeList').addEventListener('click', e => {
 });
 
 
+/* ================= Live service =================
+   How long until the bus comes, whether it's running on time, trips the
+   agency canceled, detours, and buses that have stopped moving mid-route —
+   all from DDOT's and SMART's own live feeds, via the tw-live function.
+   A bus is flagged "not moving" only after 10+ minutes in one spot away
+   from the ends of its trip; TransitWatch never claims a breakdown. */
+
+let rtLiveTimer = null, rtBusLayer = null;
+
+async function live(params){
+  const r = await fetch(SUPABASE_URL + '/functions/v1/tw-live?' + new URLSearchParams(params));
+  const d = await r.json();
+  if(!r.ok || d.error) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+function minsOf(sec){ return Math.max(1, Math.round(Math.abs(sec) / 60)); }
+function statusLabel(x){
+  if(x.status === 'stopped') return `Not moving ${x.stopped_min} min`;
+  if(x.status === 'late')    return `${minsOf(x.delay)} min late`;
+  if(x.status === 'early')   return `${minsOf(x.delay)} min early`;
+  if(x.status === 'on_time') return 'On time';
+  return '';
+}
+function statusChip(x){ const t = statusLabel(x); return t ? `<span class="st ${x.status}">${t}</span>` : ''; }
+function etaIn(at, now){ const m = Math.round((at - now) / 60); return m <= 0 ? 'now' : `in ${m} min`; }
+function walkMin(m){ return `${Math.max(1, Math.round(m / 80))} min walk`; }
+function effectName(e){
+  return ({ DETOUR:'Detour', NO_SERVICE:'No service', REDUCED_SERVICE:'Reduced service',
+            SIGNIFICANT_DELAYS:'Significant delays', STOP_MOVED:'Stop moved' })[e] || 'Service alert';
+}
+
+function arrRow(a, showRoute){
+  const rt = showRoute ? `<b>${escapeHtml(String(a.route || ''))}</b> ` : '';
+  if(a.canceled){
+    return `<div class="arr x"><div class="min">${escapeHtml(a.scheduled || '')}</div>
+      <div class="to">${rt}${a.headsign ? 'to ' + escapeHtml(a.headsign) : ''}</div><span class="st canceled">Canceled</span></div>`;
+  }
+  const m = a.minutes <= 0 ? 'Due' : `${a.minutes}<small>min</small>`;
+  return `<div class="arr"><div class="min">${m}</div>
+    <div class="to">${a.tracked ? '<i class="dot-live" title="This bus is reporting its position live"></i>' : ''}${rt}${
+      a.headsign ? 'to ' + escapeHtml(a.headsign) : ''} ${statusChip(a)}${a.tracked ? '' : ' <span>· scheduled</span>'}</div></div>`;
+}
+function arrList(list, showRoute){
+  return list.length ? list.map(a => arrRow(a, showRoute)).join('')
+    : '<p class="lv-note">No buses predicted at this stop in the next two hours.</p>';
+}
+
+function busIcon(v){
+  const label = (v.route || '').toString().slice(0, 4) || 'BUS';
+  return L.divIcon({ className:'', html:`<div class="bus ${escapeHtml(v.status || '')}">${escapeHtml(label)}</div>`,
+                     iconSize:[26,26], iconAnchor:[13,13] });
+}
+function busPopup(v){
+  const s = statusLabel(v);
+  const col = { on_time:'#1A9E62', late:'#B76E00', early:'#1F6FA3', stopped:'#C62828' }[v.status] || '#333';
+  return `<b>${escapeHtml(v.agency || '')} ${escapeHtml(String(v.route || '—'))}</b>${v.headsign ? ' to ' + escapeHtml(v.headsign) : ''}<br>` +
+    (s ? `<b style="color:${col}">${s}</b>${v.status === 'stopped' ? ' · possible breakdown or hold-up' : ''}<br>` : '') +
+    (v.next_stop ? `Next stop: ${escapeHtml(v.next_stop)}<br>` : '') +
+    `<small style="color:#5B6B85">Bus ${escapeHtml(String(v.vid || v.id))}${v.speed != null ? ' · ' + Math.round(v.speed * 2.237) + ' mph' : ''}</small>`;
+}
+
+async function stopArrivalsPopup(marker, agency, code, name){
+  marker.setPopupContent(`<b>${escapeHtml(name)}</b><br><small>Checking next buses…</small>`);
+  try{
+    const d = await live({ action:'stop', agency, code });
+    marker.setPopupContent(`<b>${escapeHtml(name)}</b><div class="pop-arr">${arrList(d.arrivals.slice(0, 4), true)}</div>`);
+  }catch(e){
+    marker.setPopupContent(`<b>${escapeHtml(name)}</b><br><small>Live arrivals are unavailable right now.</small>`);
+  }
+}
+
+/* ---- route screen: live section + buses on the route map ---- */
+async function loadRouteLive(id, m){
+  clearInterval(rtLiveTimer);
+  const run = async () => {
+    const el = document.getElementById('rtLive');
+    if(routeView !== id || !el){ clearInterval(rtLiveTimer); return; }
+    try{
+      const d = await live({ action:'route', route:id });
+      if(routeView !== id) return;
+      renderRouteLive(d, m);
+      drawRouteBuses(d.buses);
+    }catch(e){
+      console.warn('route live', e);
+      if(!el.dataset.ok) el.innerHTML = '<h3 class="rt-sub2">Live right now</h3><p class="lv-note">Live service data is unavailable right now.</p>';
+    }
+  };
+  await run();
+  rtLiveTimer = setInterval(run, 30000);
+}
+
+function renderRouteLive(d, m){
+  const el = document.getElementById('rtLive'); if(!el) return;
+  el.dataset.ok = '1';
+  const n = d.now, rated = !!(d.feeds && d.feeds.on_time_rated), ag = escapeHtml(m.agency);
+  const parts = [`<b>${n.buses}</b> bus${n.buses === 1 ? '' : 'es'} running`];
+  if(rated){
+    if(n.on_time) parts.push(`${n.on_time} on time`);
+    if(n.late) parts.push(`<span class="s-watch">${n.late} late</span>`);
+    if(n.early) parts.push(`${n.early} early`);
+  }
+  if(n.stopped) parts.push(`<span class="s-alert">${n.stopped} not moving</span>`);
+
+  let h = '<h3 class="rt-sub2"><span class="pulse"></span>Live right now</h3>';
+  h += `<p class="lv-line">${n.buses ? parts.join(' · ') : 'No buses on this route are reporting right now.'}</p>`;
+  if(rated && d.on_time_today != null){
+    h += `<p class="lv-note">${d.on_time_today}% on time today, checked every minute (on time = no more than 1 min early or 5 min late).</p>`;
+  }else if(!rated){
+    h += `<p class="lv-note">Arrival times here are live from ${ag}. On time / late labels need ${ag}'s current timetable, which TransitWatch is still loading, so they're off for now rather than guessed.</p>`;
+  }
+
+  d.buses.filter(b => b.status === 'stopped').forEach(b => {
+    h += `<div class="lv-card bad"><b>Bus ${escapeHtml(b.vid)} hasn't moved in ${b.stopped_min} min</b>${
+      b.next_stop ? `Near ${escapeHtml(b.next_stop)}. ` : ''}Possible breakdown or hold-up — expect a longer wait for buses behind it.<br>
+      <small>Flagged by TransitWatch from the bus's live position; not confirmed by ${ag}.</small></div>`;
+  });
+
+  const today = d.canceled_today || [], now = d.canceled_now || [];
+  const cancelN = Math.max(today.length, now.length);
+  if(cancelN){
+    const times = today.map(c => c.sched_start).filter(Boolean);
+    h += `<div class="lv-card bad"><b>${cancelN} trip${cancelN === 1 ? '' : 's'} canceled today</b>${
+      times.length ? 'Scheduled ' + times.map(escapeHtml).join(', ') + '. ' : ''}${ag} canceled ${cancelN === 1 ? 'this run' : 'these runs'}, so expect longer gaps between buses.</div>`;
+  }
+
+  (d.alerts || []).forEach(a => {
+    h += `<div class="lv-card"><b>${escapeHtml(a.header || effectName(a.effect))}</b>${escapeHtml(a.description || '')}<br><small>${ag} service alert</small></div>`;
+  });
+
+  const rows = d.buses.filter(b => b.status !== 'stopped' && b.status !== 'no_trip');
+  if(rows.length){
+    h += '<div style="margin-top:8px">' + rows.map(b => `<div class="bus-row"><div class="bid">#${escapeHtml(b.vid)}</div>
+      <div class="bb">${b.headsign ? 'To ' + escapeHtml(b.headsign) : 'In service'} ${statusChip(b)}${
+        b.next_stop ? `<br><span>Next: ${escapeHtml(b.next_stop)}${b.next_at ? ' · ' + etaIn(b.next_at, d.at) : ''}</span>` : ''}</div></div>`).join('') + '</div>';
+  }
+  h += `<p class="lv-note">Tap any stop on the map for its next buses. Source: ${ag} live feed, refreshed every 30 seconds.</p>`;
+  el.innerHTML = h;
+}
+
+function drawRouteBuses(list){
+  if(!rtMap) return;
+  if(!rtBusLayer || !rtMap.hasLayer(rtBusLayer)) rtBusLayer = L.layerGroup().addTo(rtMap);
+  rtBusLayer.clearLayers();
+  list.filter(v => v.status !== 'no_trip').forEach(v =>
+    L.marker([v.lat, v.lng], { icon: busIcon(v), zIndexOffset: 500 }).addTo(rtBusLayer).bindPopup(busPopup(v)));
+}
+
+/* ---- Nearby tab: stops within walking distance with their next buses ---- */
+let nbAt = 0, nbBusy = false;
+async function loadNearBuses(force){
+  const el = document.getElementById('nbList'); if(!el) return;
+  if(nbBusy || (!force && Date.now() - nbAt < 25000)) return;
+  nbBusy = true;
+  try{
+    const d = await live({ action:'near', lat: pos.lat, lng: pos.lng });
+    nbAt = Date.now();
+    const unrated = Object.entries(d.feeds || {}).filter(([, f]) => !f.on_time_rated).map(([a]) => a);
+    el.innerHTML = d.stops.length
+      ? d.stops.map(s => `<div class="nb-stop"><h4>${escapeHtml(s.name)} <span>${escapeHtml(s.agency)} · ${walkMin(s.meters)}</span></h4>${arrList(s.arrivals, true)}</div>`).join('') +
+        `<p class="lv-note"><i class="dot-live"></i>bus is reporting its position live · "scheduled" means it hasn't started that trip yet.${
+          unrated.length ? ` On time / late labels are off for ${unrated.join(' and ')} buses until TransitWatch loads the current timetable; arrival times are still live.` : ''}</p>`
+      : '<div class="empty">No buses predicted at stops within a half mile of you.</div>';
+  }catch(e){
+    console.warn('near buses', e);
+    el.innerHTML = '<div class="empty">Live arrivals are unavailable right now.</div>';
+  }
+  nbBusy = false;
+}
+document.getElementById('nbRefresh').addEventListener('click', () => loadNearBuses(true));
+setInterval(() => { if(document.getElementById('v-near').classList.contains('on')) loadNearBuses(); }, 30000);
+
+
 /* ================= Live buses (GTFS-Realtime, proxied) =================
    Agency vehicle positions via the tw-live edge function. SMART runs a
    BusTime system; DDOT has no documented public realtime feed, so the
@@ -1563,21 +1805,17 @@ function drawBuses(list){
   list.forEach(v => {
     live.add(v.id);
     const pos0 = [v.lat, v.lng];
-    const label = (v.route || '').toString().slice(0, 4) || 'BUS';
     const existing = busMarks.get(v.id);
 
     if(existing){
       existing.setLatLng(pos0);          // slides to the new position
+      if(existing._st !== v.status){ existing.setIcon(busIcon(v)); existing._st = v.status; }
+      existing.setPopupContent(busPopup(v));
       return;
     }
-    const m = L.marker(pos0, { icon: L.divIcon({
-      className:'',
-      html:`<div class="bus">${escapeHtml(label)}</div>`,
-      iconSize:[26,26], iconAnchor:[13,13]
-    })}).addTo(busLayer);
-    m.bindPopup(`<b>Route ${escapeHtml(String(v.route || '—'))}</b><br>
-      <small style="color:#8EA6CC">Vehicle ${escapeHtml(String(v.id))}${
-        v.speed != null ? ' · ' + Math.round(v.speed * 2.237) + ' mph' : ''}</small>`);
+    const m = L.marker(pos0, { icon: busIcon(v) }).addTo(busLayer);
+    m._st = v.status;
+    m.bindPopup(busPopup(v));
     busMarks.set(v.id, m);
   });
 
